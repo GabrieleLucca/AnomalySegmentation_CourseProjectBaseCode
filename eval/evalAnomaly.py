@@ -13,11 +13,8 @@ from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barc
 from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
 import torch.nn.functional as funct
 from torchvision.transforms import Resize
-<<<<<<< HEAD
 from iouEval import iouEval
-=======
 from temperature_scaling import ModelWithTemperature
->>>>>>> 3e4cfcf8d12e8b2833b9f55e756293b5c4af89e2
 
 seed = 42
 
@@ -113,14 +110,8 @@ def main():
             print(anomaly_result.size())
         else:
             if args.method == 'msp':
-<<<<<<< HEAD
-                # MSP with temperature scaling
-                anomaly_result = 1.0 - np.max(((result.squeeze(0).data.cpu().numpy())/ args.temperature), axis=0)   
-                #anomaly_result = 1.0 - torch.max(funct.softmax(result / args.temperature, dim=0), dim=0)[0]
-=======
                 softmax_probs = torch.nn.functional.softmax(result.squeeze(0) / float(args.temperature), dim=0)
                 anomaly_result = 1.0 - (np.max(softmax_probs.data.cpu().numpy(), axis=0))  
->>>>>>> 3e4cfcf8d12e8b2833b9f55e756293b5c4af89e2
             elif args.method == 'maxlogit':
                 anomaly_result = -torch.max(result, dim=0)[0]
                 anomaly_result = anomaly_result.data.cpu().numpy()
