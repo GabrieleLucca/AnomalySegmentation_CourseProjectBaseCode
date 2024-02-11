@@ -13,14 +13,9 @@ from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barc
 from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
 import torch.nn.functional as funct
 from torchvision.transforms import Resize
-<<<<<<< HEAD
-from iouEval import iouEval
-=======
 from temperature_scaling import ModelWithTemperature
->>>>>>> 3e4cfcf8d12e8b2833b9f55e756293b5c4af89e2
 
 seed = 42
-
 
 # general reproducibility
 random.seed(seed)
@@ -41,18 +36,46 @@ def main():
         nargs="+",
         help="A list of space separated input images; "
         "or a single glob pattern such as 'directory/*.jpg'",
-    )  
-    parser.add_argument('--loadDir',default="../trained_models/")
+    )
+    parser.add_argument('--loadDir', default="../trained_models/")
     parser.add_argument('--loadWeights', default="erfnet_pretrained.pth")
     parser.add_argument('--loadModel', default="erfnet.py")
-    parser.add_argument('--subset', default="val")  #can be val or train (must have labels)
+    parser.add_argument('--subset', default="val")  # can be val or train (must have labels)
     parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
-    parser.add_argument('--temperature', type=float, default=1)
-    parser.add_argument('--method', type=str, default='msp')
     parser.add_argument('--num-workers', type=int, default=4)
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
+    # ADDED FOR THE PROJECT
+    parser.add_argument('--method', default='msp')
+    parser.add_argument('--temperature', default=1.0)
+    ####
     args = parser.parse_args()
+    
+    print(f"Finding the best temperature...")
+    # Initialize temperature values for grid search
+    t_values = [0.01, 0.05, 0.1, 0.2, 0.5]
+    best_t = None
+    best_score = -np.inf
+    best_fpr = 0.0
+    # Perform grid search over temperature values
+    for t in t_values:
+        args.temperature = t  # Set current temperature value
+        prc_auc, fpr, temperature = evaluate_model(args)  # Evaluate model with current temperature
+        print(f'Evaluation with Temperature={temperature}:')
+        print(f'AUPRC score: {prc_auc*100.0}')
+        print(f'FPR@TPR95: {fpr*100.0}')
+
+        # Update best temperature and score if necessary
+        if prc_auc > best_score:
+            best_t = temperature
+            best_score = prc_auc
+            best_fpr = fpr*100.0
+
+    print(f'Best temperature found: {best_t}')
+    print(f'Corresponding AUPRC score: {best_score*100.0}')
+    print(f'Corresponding FPR95 score: {best_fpr}')
+        
+def evaluate_model(args):
     anomaly_score_list = []
     ood_gts_list = []
 
@@ -60,7 +83,6 @@ def main():
         open('results.txt', 'w').close()
     file = open('results.txt', 'a')
 
-    modelname = args.loadModel.rstrip(".py")
     modelpath = args.loadDir + args.loadModel
     weightspath = args.loadDir + args.loadWeights
 
@@ -96,42 +118,8 @@ def main():
         images = images.permute(0, 3, 1, 2)
 
         result = model(images).squeeze(0)
-
-        #with torch.no_grad():
-            #if modelname == "erfnet":
-            #    result = model(images).squeeze(0)
-
-
-            # elif modelname == "enet":
-            #     result = torch.roll(model(images).squeeze(0), -1, 0)
-            # elif modelname == "bisenetv1":
-            #     result = model(images)[0].squeeze(0)
-
-        if args.method == 'void':
-            print(result.size())
-            anomaly_result = funct.softmax(result, dim=0)[-1]
-            print(anomaly_result.size())
-        else:
-            if args.method == 'msp':
-<<<<<<< HEAD
-                # MSP with temperature scaling
-                anomaly_result = 1.0 - np.max(((result.squeeze(0).data.cpu().numpy())/ args.temperature), axis=0)   
-                #anomaly_result = 1.0 - torch.max(funct.softmax(result / args.temperature, dim=0), dim=0)[0]
-=======
-                softmax_probs = torch.nn.functional.softmax(result.squeeze(0) / float(args.temperature), dim=0)
-                anomaly_result = 1.0 - (np.max(softmax_probs.data.cpu().numpy(), axis=0))  
->>>>>>> 3e4cfcf8d12e8b2833b9f55e756293b5c4af89e2
-            elif args.method == 'maxlogit':
-                anomaly_result = -torch.max(result, dim=0)[0]
-                anomaly_result = anomaly_result.data.cpu().numpy()
-            elif args.method == 'maxentropy':
-                anomaly_result = torch.div(
-                    torch.sum(-funct.softmax(result, dim=0) * funct.log_softmax(result, dim=0), dim=0),
-                    torch.log(torch.tensor(result.size(0))),
-                )
-                anomaly_result = anomaly_result.data.cpu().numpy()
-            else:
-                print("Unknown method")
+        softmax_probs = torch.nn.functional.softmax(result.squeeze(0) / float(args.temperature), dim=0)
+        anomaly_result = 1.0 - (np.max(softmax_probs.data.cpu().numpy(), axis=0))  
 
         pathGT = path.replace("images", "labels_masks")                
         if "RoadObsticle21" in pathGT:
@@ -185,17 +173,9 @@ def main():
 
     prc_auc = average_precision_score(val_label, val_out)
     fpr = fpr_at_95_tpr(val_out, val_label)
-
-    print(f'Model: {modelname.upper()}')
-    print(f'Method: {args.method}')
-    if args.method == 'msp':
-        print(f'Temperature: {args.temperature}')
-    print(f'AUPRC score: {prc_auc*100.0}')
-    print(f'FPR@TPR95: {fpr*100.0}')
-
-    file.write(
-        f'Model: {modelname.upper()}    Method: {args.method}   {f"   Temperature: {args.temperature}" if args.method == "msp" else ""}    AUPRC score: {prc_auc * 100.0}   FPR@TPR95: {fpr * 100.0}'
-    )
-    file.close()
+    
+    return prc_auc, fpr, args.temperature
+    
+    
 if __name__ == '__main__':
     main()
