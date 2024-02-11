@@ -64,9 +64,6 @@ def main():
 
     model = ERFNet(NUM_CLASSES)
     
-    if(args.temperature != 1.0 & args.method == 'msp'):
-        model = ModelWithTemperature(model)
-        model.set_temperature(args.temperature)
 
     if (not args.cpu):
         model = torch.nn.DataParallel(model).cuda()
@@ -111,7 +108,8 @@ def main():
             print(anomaly_result.size())
         else:
             if args.method == 'msp':
-                anomaly_result = 1.0 - np.max(result.squeeze(0).data.cpu().numpy(), axis=0)   
+                softmax_probs = torch.nn.functional.softmax(result.squeeze(0) / float(args.temperature), dim=0)
+                anomaly_result = 1.0 - (np.max(softmax_probs.data.cpu().numpy(), axis=0))  
             elif args.method == 'maxlogit':
                 anomaly_result = -torch.max(result, dim=0)[0]
                 anomaly_result = anomaly_result.data.cpu().numpy()
