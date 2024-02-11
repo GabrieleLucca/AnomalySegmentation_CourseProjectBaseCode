@@ -64,7 +64,7 @@ def main():
 
     model = ERFNet(NUM_CLASSES)
     
-    if(args.temperature):
+    if(args.temperature != 1.0 & args.method == 'msp'):
         model = ModelWithTemperature(model)
         model.set_temperature(args.temperature)
 
