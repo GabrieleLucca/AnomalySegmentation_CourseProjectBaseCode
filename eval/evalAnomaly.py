@@ -11,6 +11,8 @@ import os.path as osp
 from argparse import ArgumentParser
 from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
 from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
+import torch.nn.functional as funct
+from torchvision.transforms import Resize
 
 seed = 42
 
@@ -39,6 +41,8 @@ def main():
     parser.add_argument('--loadModel', default="erfnet.py")
     parser.add_argument('--subset', default="val")  #can be val or train (must have labels)
     parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
+    parser.add_argument('--temperature', type=float, default=1)
+    parser.add_argument('--method', type=str, default='msp')
     parser.add_argument('--num-workers', type=int, default=4)
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
@@ -50,6 +54,7 @@ def main():
         open('results.txt', 'w').close()
     file = open('results.txt', 'a')
 
+    modelname = args.loadModel.rstrip(".py")
     modelpath = args.loadDir + args.loadModel
     weightspath = args.loadDir + args.loadWeights
 
@@ -81,10 +86,41 @@ def main():
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
         print(path)
         images = torch.from_numpy(np.array(Image.open(path).convert('RGB'))).unsqueeze(0).float()
-        images = images.permute(0,3,1,2)
-        with torch.no_grad():
-            result = model(images)
-        anomaly_result = 1.0 - np.max(result.squeeze(0).data.cpu().numpy(), axis=0)            
+        images = images.permute(0, 3, 1, 2)
+
+        result = model(images).squeeze(0)
+
+        #with torch.no_grad():
+            #if modelname == "erfnet":
+            #    result = model(images).squeeze(0)
+
+
+            # elif modelname == "enet":
+            #     result = torch.roll(model(images).squeeze(0), -1, 0)
+            # elif modelname == "bisenetv1":
+            #     result = model(images)[0].squeeze(0)
+
+        if args.method == 'void':
+            print(result.size())
+            anomaly_result = funct.softmax(result, dim=0)[-1]
+            print(anomaly_result.size())
+        else:
+            if args.method == 'msp':
+                # MSP with temperature scaling
+                anomaly_result = 1.0 - np.max(result.squeeze(0).data.cpu().numpy(), axis=0)   
+                #anomaly_result = 1.0 - torch.max(funct.softmax(result / args.temperature, dim=0), dim=0)[0]
+            elif args.method == 'maxlogit':
+                anomaly_result = -torch.max(result, dim=0)[0]
+                anomaly_result = anomaly_result.data.cpu().numpy()
+            elif args.method == 'maxentropy':
+                anomaly_result = torch.div(
+                    torch.sum(-funct.softmax(result, dim=0) * funct.log_softmax(result, dim=0), dim=0),
+                    torch.log(torch.tensor(result.size(0))),
+                )
+                anomaly_result = anomaly_result.data.cpu().numpy()
+            else:
+                print("Unknown method")
+
         pathGT = path.replace("images", "labels_masks")                
         if "RoadObsticle21" in pathGT:
            pathGT = pathGT.replace("webp", "png")
@@ -133,14 +169,21 @@ def main():
     val_out = np.concatenate((ind_out, ood_out))
     val_label = np.concatenate((ind_label, ood_label))
 
+   # print("Val out and val label ",val_out.shape, val_label.shape)
+
     prc_auc = average_precision_score(val_label, val_out)
     fpr = fpr_at_95_tpr(val_out, val_label)
 
+    print(f'Model: {modelname.upper()}')
+    print(f'Method: {args.method}')
+    if args.method == 'msp':
+        print(f'Temperature: {args.temperature}')
     print(f'AUPRC score: {prc_auc*100.0}')
     print(f'FPR@TPR95: {fpr*100.0}')
 
-    file.write(('    AUPRC score:' + str(prc_auc*100.0) + '   FPR@TPR95:' + str(fpr*100.0) ))
+    file.write(
+        f'Model: {modelname.upper()}    Method: {args.method}   {f"   Temperature: {args.temperature}" if args.method == "msp" else ""}    AUPRC score: {prc_auc * 100.0}   FPR@TPR95: {fpr * 100.0}'
+    )
     file.close()
-
 if __name__ == '__main__':
     main()
