@@ -50,3 +50,13 @@ Model: ERFNET    Method: maxlogit       AUPRC score: 13.19344090916888   FPR@TPR
 Model: ERFNET    Method: maxentropy       AUPRC score: 14.309850623202625   FPR@TPR95: 96.71604360965756
 Model: ERFNET    Method: msp      Temperature: 1    AUPRC score: 13.193441083064222   FPR@TPR95: 97.01504216795131
 Model: ERFNET    Method: maxlogit       AUPRC score: 13.19344090916888   FPR@TPR95: 97.01504216795131
+Model: ERFNET    Method: maxlogit       AUPRC score: 13.19344090916888   FPR@TPR95: 97.01504216795131
+Model: ERFNET    Method: maxlogit       AUPRC score: 8.70796949709976   FPR@TPR95: 93.76407070333401
+Model: ERFNET    Method: maxlogit       AUPRC score: 13.19344090916888   FPR@TPR95: 97.01504216795131
+Model: ERFNET    Method: maxentropy       AUPRC score: 14.30985111393985   FPR@TPR95: 96.71601299689998
+Model: ERFNET    Method: maxentropy       AUPRC score: 9.106994890158742   FPR@TPR95: 95.31259414389824
+Model: ERFNET    Method: msp      Temperature: 1    AUPRC score: 8.707969496821905   FPR@TPR95: 93.76407070333401
+Model: ERFNET    Method: msp      Temperature: 1.1    AUPRC score: 8.70796950463327   FPR@TPR95: 93.76407140544615
+Model: ERFNET    Method: msp      Temperature: 0.3    AUPRC score: 8.707969073633631   FPR@TPR95: 93.76407341148082
+Model: ERFNET    Method: msp      Temperature: 1.1    AUPRC score: 8.70796950211311   FPR@TPR95: 93.76407270936869
+Model: ERFNET    Method: msp      Temperature: 0.3    AUPRC score: 8.707969112538455   FPR@TPR95: 93.7640673933768
