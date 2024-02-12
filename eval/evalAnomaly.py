@@ -48,31 +48,41 @@ def main():
     parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
     parser.add_argument('--temperature', type=float, default=1)
     parser.add_argument('--method', type=str, default='msp')
+    parser.add_argument('--model', type=str, default='erfnet')
     parser.add_argument('--num-workers', type=int, default=4)
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
+    
     args = parser.parse_args()
     anomaly_score_list = []
     ood_gts_list = []
+    
+    
+    modelname = args.model
+    
+    if modelname == "erfnet":
+        model = ERFNet(NUM_CLASSES)
+        args.loadModel = "erfnet.py"
+        args.loadWeights = "erfnet_pretrained.pth"
+    elif modelname == "enet":
+        model = ENet(NUM_CLASSES)
+        args.loadModel = "ENet.py"
+        args.loadWeights = "enet_pretrained.pth"
+    elif modelname == "bisenetv1":
+        model = BiSeNetV1(NUM_CLASSES)
+        args.loadModel = "BiSeNetV1.py"
+        args.loadWeights = "bisenetv1_pretrained.pth"
+        model.aux_mode = 'eval'
 
     if not os.path.exists('results.txt'):
         open('results.txt', 'w').close()
     file = open('results.txt', 'a')
 
-    modelname = args.loadModel.rstrip(".py")
     modelpath = args.loadDir + args.loadModel
     weightspath = args.loadDir + args.loadWeights
 
     print ("Loading model: " + modelpath)
     print ("Loading weights: " + weightspath)
-
-    if modelname == "erfnet":
-        net = ERFNet(NUM_CLASSES)
-    elif modelname == "enet":
-        net = ENet(NUM_CLASSES)
-    elif modelname == "bisenetv1":
-        net = BiSeNetV1(NUM_CLASSES)
-        net.aux_mode = 'eval'
     
 
     if (not args.cpu):
