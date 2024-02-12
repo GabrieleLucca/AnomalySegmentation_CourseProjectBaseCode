@@ -71,7 +71,7 @@ def main():
     elif modelname == "bisenetv1":
         model = BiSeNetV1(NUM_CLASSES, aux_mode = 'eval')
         args.loadModel = "BiSeNetV1.py"
-        args.loadWeights = "bisenetv1_pretrained.pth"
+        args.loadWeights = "bisenet_pretrained.pth"
 
     if not os.path.exists('results.txt'):
         open('results.txt', 'w').close()
@@ -97,11 +97,20 @@ def main():
                     print(name, " not loaded")
                     continue
             else:
+                print(name, " loaded")
                 own_state[name].copy_(param)
         return model
 
-    model = load_my_state_dict(model, torch.load(weightspath, map_location=lambda storage, loc: storage))
-    print ("Model and weights LOADED successfully")
+    if modelname == 'enet':
+        model = load_my_state_dict(model.module, torch.load(weightspath)['state_dict'])
+    elif modelname == 'bisenetv1':
+        model = load_my_state_dict(model, torch.load(weightspath))
+        mean = torch.tensor([0.485, 0.456, 0.406]).unsqueeze(0).unsqueeze(2).unsqueeze(3).cuda()
+        std = torch.tensor([0.229, 0.224, 0.225]).unsqueeze(0).unsqueeze(2).unsqueeze(3).cuda()
+    else:
+        model = load_my_state_dict(model, torch.load(weightspath, map_location=lambda storage, loc: storage))
+    print('Model and weights LOADED successfully')
+    
     model.eval()
     
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
