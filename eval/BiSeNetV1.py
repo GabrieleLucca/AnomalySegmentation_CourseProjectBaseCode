@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 
-from resnet import Resnet18
+from .resnet import Resnet18
 
 from torch.nn import BatchNorm2d
 
@@ -323,7 +323,6 @@ class BiSeNetV1(nn.Module):
 
 if __name__ == "__main__":
     net = BiSeNetV1(19)
-    net.cuda()
     net.eval()
     in_ten = torch.randn(16, 3, 640, 480).cuda()
     out, out16, out32 = net(in_ten)

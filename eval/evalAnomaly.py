@@ -117,12 +117,12 @@ def main():
         images = torch.from_numpy(np.array(Image.open(path).convert('RGB'))).unsqueeze(0).float()
         images = images.permute(0, 3, 1, 2)
 
-        if modelname == "erfnet":
-            result = model(images).squeeze(0)
-        elif modelname == "enet":
-            result = torch.roll(model(images).squeeze(0), -1, 0)
-        elif modelname == "bisenetv1":
-            result = model(images)[0].squeeze(0)
+        images = images.cuda()
+
+        if modelname == "bisenetv1":
+          result = model(images)[0].squeeze(0)
+        else:
+          result = model(images).squeeze(0)
 
         if args.method == 'msp':
             softmax_probs = torch.nn.functional.softmax(result.squeeze(0) / float(args.temperature), dim=0)
