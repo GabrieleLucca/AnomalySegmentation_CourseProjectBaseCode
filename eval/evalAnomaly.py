@@ -69,10 +69,9 @@ def main():
         args.loadModel = "ENet.py"
         args.loadWeights = "enet_pretrained.pth"
     elif modelname == "bisenetv1":
-        model = BiSeNetV1(NUM_CLASSES)
+        model = BiSeNetV1(NUM_CLASSES, aux_mode = 'eval')
         args.loadModel = "BiSeNetV1.py"
         args.loadWeights = "bisenetv1_pretrained.pth"
-        model.aux_mode = 'eval'
 
     if not os.path.exists('results.txt'):
         open('results.txt', 'w').close()
@@ -110,37 +109,27 @@ def main():
         images = torch.from_numpy(np.array(Image.open(path).convert('RGB'))).unsqueeze(0).float()
         images = images.permute(0, 3, 1, 2)
 
-        result = model(images).squeeze(0)
+        if modelname == "erfnet":
+            result = model(images).squeeze(0)
+        elif modelname == "enet":
+            result = torch.roll(model(images).squeeze(0), -1, 0)
+        elif modelname == "bisenetv1":
+            result = model(images)[0].squeeze(0)
 
-        #with torch.no_grad():
-            #if modelname == "erfnet":
-            #    result = model(images).squeeze(0)
-
-
-            # elif modelname == "enet":
-            #     result = torch.roll(model(images).squeeze(0), -1, 0)
-            # elif modelname == "bisenetv1":
-            #     result = model(images)[0].squeeze(0)
-
-        if args.method == 'void':
-            print(result.size())
-            anomaly_result = funct.softmax(result, dim=0)[-1]
-            print(anomaly_result.size())
+        if args.method == 'msp':
+            softmax_probs = torch.nn.functional.softmax(result.squeeze(0) / float(args.temperature), dim=0)
+            anomaly_result = 1.0 - (np.max(softmax_probs.data.cpu().numpy(), axis=0))  
+        elif args.method == 'maxlogit':
+            anomaly_result = -torch.max(result, dim=0)[0]
+            anomaly_result = anomaly_result.data.cpu().numpy()
+        elif args.method == 'maxentropy':
+            anomaly_result = torch.div(
+                torch.sum(-funct.softmax(result, dim=0) * funct.log_softmax(result, dim=0), dim=0),
+                torch.log(torch.tensor(result.size(0))),
+            )
+            anomaly_result = anomaly_result.data.cpu().numpy()
         else:
-            if args.method == 'msp':
-                softmax_probs = torch.nn.functional.softmax(result.squeeze(0) / float(args.temperature), dim=0)
-                anomaly_result = 1.0 - (np.max(softmax_probs.data.cpu().numpy(), axis=0))  
-            elif args.method == 'maxlogit':
-                anomaly_result = -torch.max(result, dim=0)[0]
-                anomaly_result = anomaly_result.data.cpu().numpy()
-            elif args.method == 'maxentropy':
-                anomaly_result = torch.div(
-                    torch.sum(-funct.softmax(result, dim=0) * funct.log_softmax(result, dim=0), dim=0),
-                    torch.log(torch.tensor(result.size(0))),
-                )
-                anomaly_result = anomaly_result.data.cpu().numpy()
-            else:
-                print("Unknown method")
+            print("Unknown method")
 
         pathGT = path.replace("images", "labels_masks")                
         if "RoadObsticle21" in pathGT:
