@@ -1,251 +1,633 @@
-from config import cfg
-import torch
+# Author: David Silva 
+# Link: https://github.com/davidtvs/PyTorch-ENet/
+
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd import Variable
-import pdb
+import torch
 
 
 class InitialBlock(nn.Module):
-    '''
-    The initial block for Enet has 2 branches: The convolution branch and
-    maxpool branch.
-    The conv branch has 13 layers, while the maxpool branch gives 3 layers
-    corresponding to the RBG channels.
-    Both output layers are then concatenated to give an output of 16 layers.
-    INPUTS:
-    - input(Tensor): A 4D tensor of shape [batch_size, channel, height, width]
-    '''
+    """The initial block is composed of two branches:
+    1. a main branch which performs a regular convolution with stride 2;
+    2. an extension branch which performs max-pooling.
 
-    def __init__(self):
-        super(InitialBlock, self).__init__()
-        self.conv = nn.Conv2d(3, 13, (3, 3), stride=2, padding=1)
-        self.batch_norm = nn.BatchNorm2d(13, 1e-3)
-        self.prelu = nn.PReLU(13)
-        self.pool = nn.MaxPool2d(2, stride=2)
+    Doing both operations in parallel and concatenating their results
+    allows for efficient downsampling and expansion. The main branch
+    outputs 13 feature maps while the extension branch outputs 3, for a
+    total of 16 feature maps after concatenation.
 
-    def forward(self, input):
-        output = torch.cat([
-            self.prelu(self.batch_norm(self.conv(input))), self.pool(input)
-        ], 1)
-        return output
+    Keyword arguments:
+    - in_channels (int): the number of input channels.
+    - out_channels (int): the number output channels.
+    - kernel_size (int, optional): the kernel size of the filters used in
+    the convolution layer. Default: 3.
+    - padding (int, optional): zero-padding added to both sides of the
+    input. Default: 0.
+    - bias (bool, optional): Adds a learnable bias to the output if
+    ``True``. Default: False.
+    - relu (bool, optional): When ``True`` ReLU is used as the activation
+    function; otherwise, PReLU is used. Default: True.
 
-
-class BottleNeck(nn.Module):
-    '''
-    The bottle module has three different kinds of variants:
-    1. A regular convolution which you can decide whether or not to downsample.
-    2. A dilated convolution which requires you to have a dilation factor.
-    3. An asymetric convolution that has a decomposed filter size of 5x1 and
-    1x5 separately.
-    INPUTS:
-    - inputs(Tensor): a 4D Tensor of the previous convolutional block of shape
-    [batch_size, channel, height, widht].
-    - output_channels(int): an integer indicating the output depth of the
-    output convolutional block.
-    - regularlizer_prob(float): the float p that represents the prob of
-    dropping a layer for spatial dropout regularlization.
-    - downsampling(bool): if True, a max-pool2D layer is added to downsample
-    the spatial sizes.
-    - upsampling(bool): if True, the upsampling bottleneck is activated but
-    requires pooling indices to upsample.
-    - dilated(bool): if True, then dilated convolution is done, but requires
-    a dilation rate to be given.
-    - dilation_rate(int): the dilation factor for performing atrous
-    convolution/dilated convolution
-    - asymmetric(bool): if True, then asymmetric convolution is done, and
-    the only filter size used here is 5.
-    - use_relu(bool): if True, then all the prelus become relus according to
-    Enet author.
-    '''
+    """
 
     def __init__(self,
-                 input_channels=None,
-                 output_channels=None,
-                 regularlizer_prob=0.1,
-                 downsampling=False,
-                 upsampling=False,
-                 dilated=False,
-                 dilation_rate=None,
+                 in_channels,
+                 out_channels,
+                 bias=False,
+                 relu=True):
+        super().__init__()
+
+        if relu:
+            activation = nn.ReLU
+        else:
+            activation = nn.PReLU
+
+        # Main branch - As stated above the number of output channels for this
+        # branch is the total minus 3, since the remaining channels come from
+        # the extension branch
+        self.main_branch = nn.Conv2d(
+            in_channels,
+            out_channels - 3,
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            bias=bias)
+
+        # Extension branch
+        self.ext_branch = nn.MaxPool2d(3, stride=2, padding=1)
+
+        # Initialize batch normalization to be used after concatenation
+        self.batch_norm = nn.BatchNorm2d(out_channels)
+
+        # PReLU layer to apply after concatenating the branches
+        self.out_activation = activation()
+
+    def forward(self, x):
+        main = self.main_branch(x)
+        ext = self.ext_branch(x)
+
+        # Concatenate branches
+        out = torch.cat((main, ext), 1)
+
+        # Apply batch normalization
+        out = self.batch_norm(out)
+
+        return self.out_activation(out)
+
+
+class RegularBottleneck(nn.Module):
+    """Regular bottlenecks are the main building block of ENet.
+    Main branch:
+    1. Shortcut connection.
+
+    Extension branch:
+    1. 1x1 convolution which decreases the number of channels by
+    ``internal_ratio``, also called a projection;
+    2. regular, dilated or asymmetric convolution;
+    3. 1x1 convolution which increases the number of channels back to
+    ``channels``, also called an expansion;
+    4. dropout as a regularizer.
+
+    Keyword arguments:
+    - channels (int): the number of input and output channels.
+    - internal_ratio (int, optional): a scale factor applied to
+    ``channels`` used to compute the number of
+    channels after the projection. eg. given ``channels`` equal to 128 and
+    internal_ratio equal to 2 the number of channels after the projection
+    is 64. Default: 4.
+    - kernel_size (int, optional): the kernel size of the filters used in
+    the convolution layer described above in item 2 of the extension
+    branch. Default: 3.
+    - padding (int, optional): zero-padding added to both sides of the
+    input. Default: 0.
+    - dilation (int, optional): spacing between kernel elements for the
+    convolution described in item 2 of the extension branch. Default: 1.
+    asymmetric (bool, optional): flags if the convolution described in
+    item 2 of the extension branch is asymmetric or not. Default: False.
+    - dropout_prob (float, optional): probability of an element to be
+    zeroed. Default: 0 (no dropout).
+    - bias (bool, optional): Adds a learnable bias to the output if
+    ``True``. Default: False.
+    - relu (bool, optional): When ``True`` ReLU is used as the activation
+    function; otherwise, PReLU is used. Default: True.
+
+    """
+
+    def __init__(self,
+                 channels,
+                 internal_ratio=4,
+                 kernel_size=3,
+                 padding=0,
+                 dilation=1,
                  asymmetric=False,
-                 use_relu=False):
-        super(BottleNeck, self).__init__()
-        self.input_channels = input_channels
-        self.output_channels = output_channels
-        self.downsampling = downsampling
-        self.upsampling = upsampling
-        self.use_relu = use_relu
+                 dropout_prob=0,
+                 bias=False,
+                 relu=True):
+        super().__init__()
 
-        internal = output_channels // 4
-        input_stride = 2 if downsampling else 1
-        # First projection with 1x1 kernel (2x2 for downsampling)
-        conv1x1_1 = nn.Conv2d(input_channels, internal,
-                              input_stride, input_stride, bias=False)
-        batch_norm1 = nn.BatchNorm2d(internal, 1e-3)
-        prelu1 = self._prelu(internal, use_relu)
-        self.block1x1_1 = nn.Sequential(conv1x1_1, batch_norm1, prelu1)
+        # Check in the internal_scale parameter is within the expected range
+        # [1, channels]
+        if internal_ratio <= 1 or internal_ratio > channels:
+            raise RuntimeError("Value out of range. Expected value in the "
+                               "interval [1, {0}], got internal_scale={1}."
+                               .format(channels, internal_ratio))
 
-        conv = None
-        if downsampling:
-            self.pool = nn.MaxPool2d(2, stride=2, return_indices=True)
-            conv = nn.Conv2d(internal, internal, 3, stride=1, padding=1)
-        elif upsampling:
-            # padding is replaced with spatial convolution without bias.
-            spatial_conv = nn.Conv2d(input_channels, output_channels, 1,
-                                     bias=False)
-            batch_norm = nn.BatchNorm2d(output_channels, 1e-3)
-            self.conv_before_unpool = nn.Sequential(spatial_conv, batch_norm)
-            self.unpool = nn.MaxUnpool2d(2)
-            conv = nn.ConvTranspose2d(internal, internal, 3,
-                                      stride=2, padding=1, output_padding=1)
-        elif dilated:
-            conv = nn.Conv2d(internal, internal, 3, padding=dilation_rate,
-                             dilation=dilation_rate)
-        elif asymmetric:
-            conv1 = nn.Conv2d(internal, internal, [5, 1], padding=(2, 0),
-                              bias=False)
-            conv2 = nn.Conv2d(internal, internal, [1, 5], padding=(0, 2))
-            conv = nn.Sequential(conv1, conv2)
+        internal_channels = channels // internal_ratio
+
+        if relu:
+            activation = nn.ReLU
         else:
-            conv = nn.Conv2d(internal, internal, 3, padding=1)
+            activation = nn.PReLU
 
-        batch_norm = nn.BatchNorm2d(internal, 1e-3)
-        prelu = self._prelu(internal, use_relu)
-        self.middle_block = nn.Sequential(conv, batch_norm, prelu)
+        # Main branch - shortcut connection
 
-        # Final projection with 1x1 kernel
-        conv1x1_2 = nn.Conv2d(internal, output_channels, 1, bias=False)
-        batch_norm2 = nn.BatchNorm2d(output_channels, 1e-3)
-        prelu2 = self._prelu(output_channels, use_relu)
-        self.block1x1_2 = nn.Sequential(conv1x1_2, batch_norm2, prelu2)
+        # Extension branch - 1x1 convolution, followed by a regular, dilated or
+        # asymmetric convolution, followed by another 1x1 convolution, and,
+        # finally, a regularizer (spatial dropout). Number of channels is constant.
 
-        # regularlize
-        self.dropout = nn.Dropout2d(regularlizer_prob)
+        # 1x1 projection convolution
+        self.ext_conv1 = nn.Sequential(
+            nn.Conv2d(
+                channels,
+                internal_channels,
+                kernel_size=1,
+                stride=1,
+                bias=bias), nn.BatchNorm2d(internal_channels), activation())
 
-    def _prelu(self, channels, use_relu):
-        return (nn.PReLU(channels) if use_relu is False else nn.ReLU())
-
-    def forward(self, input, pooling_indices=None):
-        main = None
-        input_shape = input.size()
-        if self.downsampling:
-            main, indices = self.pool(input)
-            if (self.output_channels != self.input_channels):
-                pad = Variable(torch.Tensor(input_shape[0],
-                               self.output_channels - self.input_channels,
-                               input_shape[2] // 2,
-                               input_shape[3] // 2).zero_(), requires_grad=False)
-                if (torch.cuda.is_available):
-                    pad = pad.cuda(0)
-                main = torch.cat((main, pad), 1)
-        elif self.upsampling:
-            main = self.unpool(self.conv_before_unpool(input), pooling_indices)
+        # If the convolution is asymmetric we split the main convolution in
+        # two. Eg. for a 5x5 asymmetric convolution we have two convolution:
+        # the first is 5x1 and the second is 1x5.
+        if asymmetric:
+            self.ext_conv2 = nn.Sequential(
+                nn.Conv2d(
+                    internal_channels,
+                    internal_channels,
+                    kernel_size=(kernel_size, 1),
+                    stride=1,
+                    padding=(padding, 0),
+                    dilation=dilation,
+                    bias=bias), nn.BatchNorm2d(internal_channels), activation(),
+                nn.Conv2d(
+                    internal_channels,
+                    internal_channels,
+                    kernel_size=(1, kernel_size),
+                    stride=1,
+                    padding=(0, padding),
+                    dilation=dilation,
+                    bias=bias), nn.BatchNorm2d(internal_channels), activation())
         else:
-            main = input
+            self.ext_conv2 = nn.Sequential(
+                nn.Conv2d(
+                    internal_channels,
+                    internal_channels,
+                    kernel_size=kernel_size,
+                    stride=1,
+                    padding=padding,
+                    dilation=dilation,
+                    bias=bias), nn.BatchNorm2d(internal_channels), activation())
 
-        other_net = nn.Sequential(self.block1x1_1, self.middle_block,
-                                  self.block1x1_2)
-        other = other_net(input)
-        output = F.relu(main + other)
-        if (self.downsampling):
-            return output, indices
-        return output
+        # 1x1 expansion convolution
+        self.ext_conv3 = nn.Sequential(
+            nn.Conv2d(
+                internal_channels,
+                channels,
+                kernel_size=1,
+                stride=1,
+                bias=bias), nn.BatchNorm2d(channels), activation())
 
-ENCODER_LAYER_NAMES = ['initial', 'bottleneck_1_0', 'bottleneck_1_1',
-                       'bottleneck_1_2', 'bottleneck_1_3', 'bottleneck_1_4',
-                       'bottleneck_2_0', 'bottleneck_2_1', 'bottleneck_2_2',
-                       'bottleneck_2_3', 'bottleneck_2_4', 'bottleneck_2_5',
-                       'bottleneck_2_6', 'bottleneck_2_7', 'bottleneck_2_8',
-                       'bottleneck_3_1', 'bottleneck_3_2', 'bottleneck_3_3',
-                       'bottleneck_3_4', 'bottleneck_3_5', 'bottleneck_3_6',
-                       'bottleneck_3_7', 'bottleneck_3_8', 'classifier']
-DECODER_LAYER_NAMES = ['bottleneck_4_0', 'bottleneck_4_1', 'bottleneck_4_2'
-                       'bottleneck_5_0', 'bottleneck_5_1', 'fullconv']
+        self.ext_regul = nn.Dropout2d(p=dropout_prob)
 
+        # PReLU layer to apply after adding the branches
+        self.out_activation = activation()
 
-class Encoder(nn.Module):
-    def __init__(self, num_classes, only_encode=True):
-        super(Encoder, self).__init__()
-        self.state = only_encode
-        layers = []
-        layers.append(InitialBlock())
-        layers.append(BottleNeck(16, 64, regularlizer_prob=0.01,
-                                 downsampling=True))
-        for i in xrange(4):
-            layers.append(BottleNeck(64, 64, regularlizer_prob=0.01))
-        
-        # Section 2 and 3
-        layers.append(BottleNeck(64, 128, downsampling=True))
-        for i in xrange(2):
-            layers.append(BottleNeck(128, 128))
-            layers.append(BottleNeck(128, 128, dilated=True, dilation_rate=2))
-            layers.append(BottleNeck(128, 128, asymmetric=True))
-            layers.append(BottleNeck(128, 128, dilated=True, dilation_rate=4))
-            layers.append(BottleNeck(128, 128))
-            layers.append(BottleNeck(128, 128, dilated=True, dilation_rate=8))
-            layers.append(BottleNeck(128, 128, asymmetric=True))
-            layers.append(BottleNeck(128, 128, dilated=True, dilation_rate=16))
-        # only training encoder
-        if only_encode:
-            layers.append(nn.Conv2d(128, num_classes, 1))
+    def forward(self, x):
+        # Main branch shortcut
+        main = x
 
-        for layer, layer_name in zip(layers, ENCODER_LAYER_NAMES):
-            super(Encoder, self).__setattr__(layer_name, layer)
-        self.layers = layers
+        # Extension branch
+        ext = self.ext_conv1(x)
+        ext = self.ext_conv2(ext)
+        ext = self.ext_conv3(ext)
+        ext = self.ext_regul(ext)
 
-    
-    def forward(self, input):
-        pooling_stack = []
-        output = input
-        for layer in self.layers:
-            if hasattr(layer, 'downsampling') and layer.downsampling:
-                output, pooling_indices = layer(output)
-                pooling_stack.append(pooling_indices)
-            else:
-                output = layer(output)
+        # Add main and extension branches
+        out = main + ext
 
-        if self.state:
-            output = F.upsample(output, cfg.TRAIN.IMG_SIZE, None, 'bilinear')
-
-        return output, pooling_stack
+        return self.out_activation(out)
 
 
-class Decoder(nn.Module):
-    def __init__(self, num_classes):
-        super(Decoder, self).__init__()
-        layers = []
-        # Section 4
-        layers.append(BottleNeck(128, 64, upsampling=True, use_relu=True))
-        layers.append(BottleNeck(64, 64, use_relu=True))
-        layers.append(BottleNeck(64, 64, use_relu=True))
+class DownsamplingBottleneck(nn.Module):
+    """Downsampling bottlenecks further downsample the feature map size.
 
-        # Section 5
-        layers.append(BottleNeck(64, 16, upsampling=True, use_relu=True))
-        layers.append(BottleNeck(16, 16, use_relu=True))
-        layers.append(nn.ConvTranspose2d(16, num_classes, 2, stride=2))
+    Main branch:
+    1. max pooling with stride 2; indices are saved to be used for
+    unpooling later.
 
-        self.layers = nn.ModuleList([layer for layer in layers])
-    
-    def forward(self, input, pooling_stack):
-        output = input
-        for layer in self.layers:
-            if hasattr(layer, 'upsampling') and layer.upsampling:
-                pooling_indices = pooling_stack.pop()
-                output = layer(output, pooling_indices)
-            else:
-                output = layer(output)
-        return output
+    Extension branch:
+    1. 2x2 convolution with stride 2 that decreases the number of channels
+    by ``internal_ratio``, also called a projection;
+    2. regular convolution (by default, 3x3);
+    3. 1x1 convolution which increases the number of channels to
+    ``out_channels``, also called an expansion;
+    4. dropout as a regularizer.
+
+    Keyword arguments:
+    - in_channels (int): the number of input channels.
+    - out_channels (int): the number of output channels.
+    - internal_ratio (int, optional): a scale factor applied to ``channels``
+    used to compute the number of channels after the projection. eg. given
+    ``channels`` equal to 128 and internal_ratio equal to 2 the number of
+    channels after the projection is 64. Default: 4.
+    - return_indices (bool, optional):  if ``True``, will return the max
+    indices along with the outputs. Useful when unpooling later.
+    - dropout_prob (float, optional): probability of an element to be
+    zeroed. Default: 0 (no dropout).
+    - bias (bool, optional): Adds a learnable bias to the output if
+    ``True``. Default: False.
+    - relu (bool, optional): When ``True`` ReLU is used as the activation
+    function; otherwise, PReLU is used. Default: True.
+
+    """
+
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 internal_ratio=4,
+                 return_indices=False,
+                 dropout_prob=0,
+                 bias=False,
+                 relu=True):
+        super().__init__()
+
+        # Store parameters that are needed later
+        self.return_indices = return_indices
+
+        # Check in the internal_scale parameter is within the expected range
+        # [1, channels]
+        if internal_ratio <= 1 or internal_ratio > in_channels:
+            raise RuntimeError("Value out of range. Expected value in the "
+                               "interval [1, {0}], got internal_scale={1}. "
+                               .format(in_channels, internal_ratio))
+
+        internal_channels = in_channels // internal_ratio
+
+        if relu:
+            activation = nn.ReLU
+        else:
+            activation = nn.PReLU
+
+        # Main branch - max pooling followed by feature map (channels) padding
+        self.main_max1 = nn.MaxPool2d(
+            2,
+            stride=2,
+            return_indices=return_indices)
+
+        # Extension branch - 2x2 convolution, followed by a regular, dilated or
+        # asymmetric convolution, followed by another 1x1 convolution. Number
+        # of channels is doubled.
+
+        # 2x2 projection convolution with stride 2
+        self.ext_conv1 = nn.Sequential(
+            nn.Conv2d(
+                in_channels,
+                internal_channels,
+                kernel_size=2,
+                stride=2,
+                bias=bias), nn.BatchNorm2d(internal_channels), activation())
+
+        # Convolution
+        self.ext_conv2 = nn.Sequential(
+            nn.Conv2d(
+                internal_channels,
+                internal_channels,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+                bias=bias), nn.BatchNorm2d(internal_channels), activation())
+
+        # 1x1 expansion convolution
+        self.ext_conv3 = nn.Sequential(
+            nn.Conv2d(
+                internal_channels,
+                out_channels,
+                kernel_size=1,
+                stride=1,
+                bias=bias), nn.BatchNorm2d(out_channels), activation())
+
+        self.ext_regul = nn.Dropout2d(p=dropout_prob)
+
+        # PReLU layer to apply after concatenating the branches
+        self.out_activation = activation()
+
+    def forward(self, x):
+        # Main branch shortcut
+        if self.return_indices:
+            main, max_indices = self.main_max1(x)
+        else:
+            main = self.main_max1(x)
+
+        # Extension branch
+        ext = self.ext_conv1(x)
+        ext = self.ext_conv2(ext)
+        ext = self.ext_conv3(ext)
+        ext = self.ext_regul(ext)
+
+        # Main branch channel padding
+        n, ch_ext, h, w = ext.size()
+        ch_main = main.size()[1]
+        padding = torch.zeros(n, ch_ext - ch_main, h, w)
+
+        # Before concatenating, check if main is on the CPU or GPU and
+        # convert padding accordingly
+        if main.is_cuda:
+            padding = padding.cuda()
+
+        # Concatenate
+        main = torch.cat((main, padding), 1)
+
+        # Add main and extension branches
+        out = main + ext
+
+        return self.out_activation(out), max_indices
+
+
+class UpsamplingBottleneck(nn.Module):
+    """The upsampling bottlenecks upsample the feature map resolution using max
+    pooling indices stored from the corresponding downsampling bottleneck.
+
+    Main branch:
+    1. 1x1 convolution with stride 1 that decreases the number of channels by
+    ``internal_ratio``, also called a projection;
+    2. max unpool layer using the max pool indices from the corresponding
+    downsampling max pool layer.
+
+    Extension branch:
+    1. 1x1 convolution with stride 1 that decreases the number of channels by
+    ``internal_ratio``, also called a projection;
+    2. transposed convolution (by default, 3x3);
+    3. 1x1 convolution which increases the number of channels to
+    ``out_channels``, also called an expansion;
+    4. dropout as a regularizer.
+
+    Keyword arguments:
+    - in_channels (int): the number of input channels.
+    - out_channels (int): the number of output channels.
+    - internal_ratio (int, optional): a scale factor applied to ``in_channels``
+     used to compute the number of channels after the projection. eg. given
+     ``in_channels`` equal to 128 and ``internal_ratio`` equal to 2 the number
+     of channels after the projection is 64. Default: 4.
+    - dropout_prob (float, optional): probability of an element to be zeroed.
+    Default: 0 (no dropout).
+    - bias (bool, optional): Adds a learnable bias to the output if ``True``.
+    Default: False.
+    - relu (bool, optional): When ``True`` ReLU is used as the activation
+    function; otherwise, PReLU is used. Default: True.
+
+    """
+
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 internal_ratio=4,
+                 dropout_prob=0,
+                 bias=False,
+                 relu=True):
+        super().__init__()
+
+        # Check in the internal_scale parameter is within the expected range
+        # [1, channels]
+        if internal_ratio <= 1 or internal_ratio > in_channels:
+            raise RuntimeError("Value out of range. Expected value in the "
+                               "interval [1, {0}], got internal_scale={1}. "
+                               .format(in_channels, internal_ratio))
+
+        internal_channels = in_channels // internal_ratio
+
+        if relu:
+            activation = nn.ReLU
+        else:
+            activation = nn.PReLU
+
+        # Main branch - max pooling followed by feature map (channels) padding
+        self.main_conv1 = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=bias),
+            nn.BatchNorm2d(out_channels))
+
+        # Remember that the stride is the same as the kernel_size, just like
+        # the max pooling layers
+        self.main_unpool1 = nn.MaxUnpool2d(kernel_size=2)
+
+        # Extension branch - 1x1 convolution, followed by a regular, dilated or
+        # asymmetric convolution, followed by another 1x1 convolution. Number
+        # of channels is doubled.
+
+        # 1x1 projection convolution with stride 1
+        self.ext_conv1 = nn.Sequential(
+            nn.Conv2d(
+                in_channels, internal_channels, kernel_size=1, bias=bias),
+            nn.BatchNorm2d(internal_channels), activation())
+
+        # Transposed convolution
+        self.ext_tconv1 = nn.ConvTranspose2d(
+            internal_channels,
+            internal_channels,
+            kernel_size=2,
+            stride=2,
+            bias=bias)
+        self.ext_tconv1_bnorm = nn.BatchNorm2d(internal_channels)
+        self.ext_tconv1_activation = activation()
+
+        # 1x1 expansion convolution
+        self.ext_conv2 = nn.Sequential(
+            nn.Conv2d(
+                internal_channels, out_channels, kernel_size=1, bias=bias),
+            nn.BatchNorm2d(out_channels))
+
+        self.ext_regul = nn.Dropout2d(p=dropout_prob)
+
+        # PReLU layer to apply after concatenating the branches
+        self.out_activation = activation()
+
+    def forward(self, x, max_indices, output_size):
+        # Main branch shortcut
+        main = self.main_conv1(x)
+        main = self.main_unpool1(
+            main, max_indices, output_size=output_size)
+
+        # Extension branch
+        ext = self.ext_conv1(x)
+        ext = self.ext_tconv1(ext, output_size=output_size)
+        ext = self.ext_tconv1_bnorm(ext)
+        ext = self.ext_tconv1_activation(ext)
+        ext = self.ext_conv2(ext)
+        ext = self.ext_regul(ext)
+
+        # Add main and extension branches
+        out = main + ext
+
+        return self.out_activation(out)
 
 
 class ENet(nn.Module):
-    def __init__(self, only_encode=False):
-        super(ENet, self).__init__()
-        self.state = only_encode
-        self.encoder = Encoder(cfg.DATA.NUM_CLASSES,only_encode=only_encode)
-        self.decoder = Decoder(cfg.DATA.NUM_CLASSES)
+    """Generate the ENet model.
 
-    def forward(self, input):
-        output, pooling_stack = self.encoder(input)
-        if not self.state:
-            output = self.decoder(output, pooling_stack)
-        return output
+    Keyword arguments:
+    - num_classes (int): the number of classes to segment.
+    - encoder_relu (bool, optional): When ``True`` ReLU is used as the
+    activation function in the encoder blocks/layers; otherwise, PReLU
+    is used. Default: False.
+    - decoder_relu (bool, optional): When ``True`` ReLU is used as the
+    activation function in the decoder blocks/layers; otherwise, PReLU
+    is used. Default: True.
+
+    """
+
+    def __init__(self, num_classes, encoder_relu=False, decoder_relu=True):
+        super().__init__()
+
+        self.initial_block = InitialBlock(3, 16, relu=encoder_relu)
+
+        # Stage 1 - Encoder
+        self.downsample1_0 = DownsamplingBottleneck(
+            16,
+            64,
+            return_indices=True,
+            dropout_prob=0.01,
+            relu=encoder_relu)
+        self.regular1_1 = RegularBottleneck(
+            64, padding=1, dropout_prob=0.01, relu=encoder_relu)
+        self.regular1_2 = RegularBottleneck(
+            64, padding=1, dropout_prob=0.01, relu=encoder_relu)
+        self.regular1_3 = RegularBottleneck(
+            64, padding=1, dropout_prob=0.01, relu=encoder_relu)
+        self.regular1_4 = RegularBottleneck(
+            64, padding=1, dropout_prob=0.01, relu=encoder_relu)
+
+        # Stage 2 - Encoder
+        self.downsample2_0 = DownsamplingBottleneck(
+            64,
+            128,
+            return_indices=True,
+            dropout_prob=0.1,
+            relu=encoder_relu)
+        self.regular2_1 = RegularBottleneck(
+            128, padding=1, dropout_prob=0.1, relu=encoder_relu)
+        self.dilated2_2 = RegularBottleneck(
+            128, dilation=2, padding=2, dropout_prob=0.1, relu=encoder_relu)
+        self.asymmetric2_3 = RegularBottleneck(
+            128,
+            kernel_size=5,
+            padding=2,
+            asymmetric=True,
+            dropout_prob=0.1,
+            relu=encoder_relu)
+        self.dilated2_4 = RegularBottleneck(
+            128, dilation=4, padding=4, dropout_prob=0.1, relu=encoder_relu)
+        self.regular2_5 = RegularBottleneck(
+            128, padding=1, dropout_prob=0.1, relu=encoder_relu)
+        self.dilated2_6 = RegularBottleneck(
+            128, dilation=8, padding=8, dropout_prob=0.1, relu=encoder_relu)
+        self.asymmetric2_7 = RegularBottleneck(
+            128,
+            kernel_size=5,
+            asymmetric=True,
+            padding=2,
+            dropout_prob=0.1,
+            relu=encoder_relu)
+        self.dilated2_8 = RegularBottleneck(
+            128, dilation=16, padding=16, dropout_prob=0.1, relu=encoder_relu)
+
+        # Stage 3 - Encoder
+        self.regular3_0 = RegularBottleneck(
+            128, padding=1, dropout_prob=0.1, relu=encoder_relu)
+        self.dilated3_1 = RegularBottleneck(
+            128, dilation=2, padding=2, dropout_prob=0.1, relu=encoder_relu)
+        self.asymmetric3_2 = RegularBottleneck(
+            128,
+            kernel_size=5,
+            padding=2,
+            asymmetric=True,
+            dropout_prob=0.1,
+            relu=encoder_relu)
+        self.dilated3_3 = RegularBottleneck(
+            128, dilation=4, padding=4, dropout_prob=0.1, relu=encoder_relu)
+        self.regular3_4 = RegularBottleneck(
+            128, padding=1, dropout_prob=0.1, relu=encoder_relu)
+        self.dilated3_5 = RegularBottleneck(
+            128, dilation=8, padding=8, dropout_prob=0.1, relu=encoder_relu)
+        self.asymmetric3_6 = RegularBottleneck(
+            128,
+            kernel_size=5,
+            asymmetric=True,
+            padding=2,
+            dropout_prob=0.1,
+            relu=encoder_relu)
+        self.dilated3_7 = RegularBottleneck(
+            128, dilation=16, padding=16, dropout_prob=0.1, relu=encoder_relu)
+
+        # Stage 4 - Decoder
+        self.upsample4_0 = UpsamplingBottleneck(
+            128, 64, dropout_prob=0.1, relu=decoder_relu)
+        self.regular4_1 = RegularBottleneck(
+            64, padding=1, dropout_prob=0.1, relu=decoder_relu)
+        self.regular4_2 = RegularBottleneck(
+            64, padding=1, dropout_prob=0.1, relu=decoder_relu)
+
+        # Stage 5 - Decoder
+        self.upsample5_0 = UpsamplingBottleneck(
+            64, 16, dropout_prob=0.1, relu=decoder_relu)
+        self.regular5_1 = RegularBottleneck(
+            16, padding=1, dropout_prob=0.1, relu=decoder_relu)
+        self.transposed_conv = nn.ConvTranspose2d(
+            16,
+            num_classes,
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            bias=False)
+
+    def forward(self, x):
+        # Initial block
+        input_size = x.size()
+        x = self.initial_block(x)
+
+        # Stage 1 - Encoder
+        stage1_input_size = x.size()
+        x, max_indices1_0 = self.downsample1_0(x)
+        x = self.regular1_1(x)
+        x = self.regular1_2(x)
+        x = self.regular1_3(x)
+        x = self.regular1_4(x)
+
+        # Stage 2 - Encoder
+        stage2_input_size = x.size()
+        x, max_indices2_0 = self.downsample2_0(x)
+        x = self.regular2_1(x)
+        x = self.dilated2_2(x)
+        x = self.asymmetric2_3(x)
+        x = self.dilated2_4(x)
+        x = self.regular2_5(x)
+        x = self.dilated2_6(x)
+        x = self.asymmetric2_7(x)
+        x = self.dilated2_8(x)
+
+        # Stage 3 - Encoder
+        x = self.regular3_0(x)
+        x = self.dilated3_1(x)
+        x = self.asymmetric3_2(x)
+        x = self.dilated3_3(x)
+        x = self.regular3_4(x)
+        x = self.dilated3_5(x)
+        x = self.asymmetric3_6(x)
+        x = self.dilated3_7(x)
+
+        # Stage 4 - Decoder
+        x = self.upsample4_0(x, max_indices2_0, output_size=stage2_input_size)
+        x = self.regular4_1(x)
+        x = self.regular4_2(x)
+
+        # Stage 5 - Decoder
+        x = self.upsample5_0(x, max_indices1_0, output_size=stage1_input_size)
+        x = self.regular5_1(x)
+        x = self.transposed_conv(x, output_size=input_size)
+
+        return x
