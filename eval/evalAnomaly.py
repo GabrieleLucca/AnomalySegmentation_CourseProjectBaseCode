@@ -102,7 +102,7 @@ def main():
 
     if modelname == 'enet':
         model = load_my_state_dict(model.module, torch.load(weightspath)['state_dict'])
-    elif args.loadModel == 'bisenetv1': 
+    elif modelname == 'bisenetv1': 
       state_dict = torch.load(weightspath)
       new_dict = {}
       for key, value in state_dict.items():
