@@ -97,7 +97,6 @@ def main():
                     print(name, " not loaded")
                     continue
             else:
-                print(name, " loaded")
                 own_state[name].copy_(param)
         return model
 
