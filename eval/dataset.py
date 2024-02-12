@@ -75,6 +75,9 @@ class cityscapes(Dataset):
         self.filenamesGt = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(self.labels_root)) for f in fn if is_label(f)]
         self.filenamesGt.sort()
 
+        print(len(self.filenames))
+        print(len(self.filenamesGt))
+
         self.input_transform = input_transform
         self.target_transform = target_transform
 

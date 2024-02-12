@@ -38,7 +38,7 @@ target_transform_cityscapes = Compose([
     Relabel(255, 19),   #ignore label to 19
 ])
 
-def main(args):
+def evaluate_iou(args):
 
     modelpath = args.loadDir + args.loadModel
     weightspath = args.loadDir + args.loadWeights
@@ -91,13 +91,8 @@ def main(args):
         with torch.no_grad():
             outputs = model(inputs)
 
-        if args.method == 'msp':
-            softmax_output = funct.softmax(outputs / float(args.temperature), dim=1)
-            predicted_labels = torch.argmax(softmax_output, dim=1).unsqueeze(1).data
-        elif args.method == 'maxlogit':
-              predicted_labels = torch.argmax(outputs, dim=1).unsqueeze(1).data          
-        elif args.method == 'maxentropy':
-              predicted_labels = torch.argmax(funct.softmax(outputs, dim=1), dim=1).unsqueeze(1).data
+        softmax_output = funct.softmax(outputs / float(args.temperature), dim=1)
+        predicted_labels = torch.argmax(softmax_output, dim=1).unsqueeze(1).data
 
         iouEvalVal.addBatch(predicted_labels, labels)
 
@@ -139,6 +134,7 @@ def main(args):
     print("=======================================")
     iouStr = getColorEntry(iouVal)+'{:0.2f}'.format(iouVal*100) + '\033[0m'
     print ("MEAN IoU: ", iouStr, "%")
+    return iouStr, args.temperature
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -156,4 +152,25 @@ if __name__ == '__main__':
     parser.add_argument('--temperature', type=float, default=1)
     parser.add_argument('--method', type=str, default='msp')
 
-    main(parser.parse_args())
+    args = parser.parse_args()
+
+    print(f"Finding the best temperature...")
+    # Initialize temperature values for grid search
+    t_values = [0.001, 0.01, 0.1]
+    best_t = None
+    best_iou = -np.inf
+    # Perform grid search over temperature values
+    for t in t_values:
+        args.temperature = t  # Set current temperature value
+        iou, temperature = evaluate_iou(args)  # Evaluate model with current temperature
+        print(f'Evaluation with Temperature={temperature}:')
+        print(f'AUPRC score: iou={iou}')
+
+        # Update best temperature and score if necessary
+        if iou > best_score:
+            best_t = temperature
+            best_score = iou
+
+    print(f'Best temperature found: {best_t}')
+    print(f'Corresponding mIoU score: {best_score}')
+        
