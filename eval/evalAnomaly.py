@@ -7,6 +7,8 @@ import random
 from PIL import Image
 import numpy as np
 from erfnet import ERFNet
+from ENet import ENet
+from BiSeNetV1 import BiSeNetV1
 import os.path as osp
 from argparse import ArgumentParser
 from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
@@ -64,7 +66,13 @@ def main():
     print ("Loading model: " + modelpath)
     print ("Loading weights: " + weightspath)
 
-    model = ERFNet(NUM_CLASSES)
+    if modelname == "erfnet":
+        net = ERFNet(NUM_CLASSES)
+    elif modelname == "enet":
+        net = ENet(NUM_CLASSES)
+    elif modelname == "bisenetv1":
+        net = BiSeNetV1(NUM_CLASSES)
+        net.aux_mode = 'eval'
     
 
     if (not args.cpu):
