@@ -127,6 +127,7 @@ def main():
         else:
           result = model(images).squeeze(0)
 
+
         if args.method == 'msp':
             softmax_probs = torch.nn.functional.softmax(result.squeeze(0) / float(args.temperature), dim=0)
             anomaly_result = 1.0 - (np.max(softmax_probs.data.cpu().numpy(), axis=0))  
@@ -139,6 +140,8 @@ def main():
                 torch.log(torch.tensor(result.size(0))),
             )
             anomaly_result = anomaly_result.data.cpu().numpy()
+        elif args.method == 'void':
+            anomaly_result = funct.softmax(result, dim=0)[-1].data.cpu().numpy()
         else:
             print("Unknown method")
 
