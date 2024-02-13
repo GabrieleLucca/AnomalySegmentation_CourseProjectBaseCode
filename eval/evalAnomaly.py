@@ -71,7 +71,7 @@ def main():
     elif modelname == "bisenetv1":
         model = BiSeNetV1(NUM_CLASSES, aux_mode = 'eval')
         args.loadModel = "BiSeNetV1.py"
-        args.loadWeights = "bisenetv1_pretrained.pth"
+        args.loadWeights = "bisenetv1_cityscapes.pth"
 
     if not os.path.exists('results.txt'):
         open('results.txt', 'w').close()
