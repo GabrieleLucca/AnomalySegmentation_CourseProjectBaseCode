@@ -118,7 +118,7 @@ def main(args):
         inputs = Variable(images)
         with torch.no_grad():
             outputs = model(inputs)
-            
+
         if modelname == 'enet':
             outputs = torch.roll(outputs, -1, 1)
         elif modelname == 'bisenetv1':
@@ -128,9 +128,9 @@ def main(args):
             softmax_output = funct.softmax(outputs / float(args.temperature), dim=1)
             predicted_labels = torch.argmax(softmax_output, dim=1).unsqueeze(1).data
         elif args.method == 'maxlogit':
-              predicted_labels = torch.argmax(outputs, dim=1).unsqueeze(1).data          
+            predicted_labels = torch.argmax(outputs, dim=1).unsqueeze(1).data          
         elif args.method == 'maxentropy':
-              predicted_labels = torch.argmax(funct.softmax(outputs, dim=1), dim=1).unsqueeze(1).data
+            predicted_labels = torch.argmax(funct.softmax(outputs, dim=1), dim=1).unsqueeze(1).data
 
         iouEvalVal.addBatch(predicted_labels, labels)
 
