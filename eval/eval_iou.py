@@ -13,6 +13,9 @@ import time
 from PIL import Image
 from argparse import ArgumentParser
 
+from ENet import ENet
+from BiSeNetV1 import BiSeNetV1
+
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, CenterCrop, Normalize, Resize
@@ -40,13 +43,28 @@ target_transform_cityscapes = Compose([
 
 def main(args):
 
+    modelname = args.model
+    
+    if modelname == "erfnet":
+        model = ERFNet(NUM_CLASSES)
+        args.loadModel = "erfnet.py"
+        args.loadWeights = "erfnet_pretrained.pth"
+    elif modelname == "enet":
+        model = ENet(NUM_CLASSES)
+        args.loadModel = "ENet.py"
+        args.loadWeights = "enet_pretrained.pth"
+    elif modelname == "bisenetv1":
+        model = BiSeNetV1(NUM_CLASSES, aux_mode = 'eval')
+        args.loadModel = "BiSeNetV1.py"
+        args.loadWeights = "bisenetv1_pretrained.pth"
+
     modelpath = args.loadDir + args.loadModel
     weightspath = args.loadDir + args.loadWeights
 
     print ("Loading model: " + modelpath)
     print ("Loading weights: " + weightspath)
 
-    model = ERFNet(NUM_CLASSES)
+    #model = ERFNet(NUM_CLASSES)
 
     #model = torch.nn.DataParallel(model)
     if (not args.cpu):
@@ -65,9 +83,19 @@ def main(args):
                 own_state[name].copy_(param)
         return model
 
-    model = load_my_state_dict(model, torch.load(weightspath, map_location=lambda storage, loc: storage))
-    print ("Model and weights LOADED successfully")
+    if modelname == 'enet':
+        model = load_my_state_dict(model.module, torch.load(weightspath)['state_dict'])
+    elif modelname == 'bisenetv1': 
+      state_dict = torch.load(weightspath)
+      new_dict = {}
+      for key, value in state_dict.items():
+        if key.split('.')[0] not in ['conv_out16', 'conv_out32']:
+          new_dict['module.'+key] = value
+      model.load_state_dict(new_dict)
+    else:
+        model = load_my_state_dict(model, torch.load(weightspath, map_location=lambda storage, loc: storage))
 
+    print ("Model and weights LOADED successfully")
 
     model.eval()
 
@@ -89,7 +117,10 @@ def main(args):
 
         inputs = Variable(images)
         with torch.no_grad():
-            outputs = model(inputs)
+            if modelname == "bisenetv1":
+                 outputs = model(inputs)[0]
+            else:
+                 outputs = model(inputs)
 
         if args.method == 'msp':
             softmax_output = funct.softmax(outputs / float(args.temperature), dim=1)
@@ -152,6 +183,7 @@ if __name__ == '__main__':
     parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
     parser.add_argument('--num-workers', type=int, default=4)
     parser.add_argument('--batch-size', type=int, default=1)
+    parser.add_argument('--model', type=str, default='erfnet')
     parser.add_argument('--cpu', action='store_true')
     parser.add_argument('--temperature', type=float, default=1)
     parser.add_argument('--method', type=str, default='msp')
