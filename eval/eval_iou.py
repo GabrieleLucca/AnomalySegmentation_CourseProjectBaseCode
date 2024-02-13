@@ -56,7 +56,7 @@ def main(args):
     elif modelname == "bisenetv1":
         model = BiSeNetV1(NUM_CLASSES, aux_mode = 'eval')
         args.loadModel = "BiSeNetV1.py"
-        args.loadWeights = "bisenetv1_pretrained.pth"
+        args.loadWeights = "bisenetv1_cityscapes.pth"
 
     modelpath = args.loadDir + args.loadModel
     weightspath = args.loadDir + args.loadWeights
@@ -93,7 +93,7 @@ def main(args):
           new_dict['module.'+key] = value
       model.load_state_dict(new_dict)
       input_transform_cityscapes = Compose(
-        [
+         [
         Resize(512, Image.BILINEAR),
         ToTensor(),
         Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),
@@ -137,11 +137,10 @@ def main(args):
         elif args.method == 'maxlogit':
             predicted_labels = torch.argmax(outputs, dim=1).unsqueeze(1).data          
         elif args.method == 'maxentropy':
-            anomaly_result = torch.div(
-                torch.sum(-funct.softmax(outputs, dim=0) * funct.log_softmax(outputs, dim=0), dim=0),
-                torch.log(torch.tensor(outputs.size(0))),
-            )
-            anomaly_result = anomaly_result.data.cpu().numpy()
+            outputs_softmax = funct.softmax(outputs, dim=1)                
+            entropy = -torch.sum(outputs_softmax * funct.log_softmax(outputs_softmax, dim=1), dim=1).unsqueeze(1)
+            predicted_labels = torch.argmax(entropy, dim=1).unsqueeze(1).data
+            
 
         iouEvalVal.addBatch(predicted_labels, labels)
 
