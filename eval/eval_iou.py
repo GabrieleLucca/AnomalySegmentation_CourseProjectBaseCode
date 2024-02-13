@@ -92,6 +92,13 @@ def main(args):
         if key.split('.')[0] not in ['conv_out16', 'conv_out32']:
           new_dict['module.'+key] = value
       model.load_state_dict(new_dict)
+      input_transform_cityscapes = Compose(
+        [
+        Resize(512, Image.BILINEAR),
+        ToTensor(),
+        Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),
+        ]
+        )   
     else:
         model = load_my_state_dict(model, torch.load(weightspath, map_location=lambda storage, loc: storage))
 
