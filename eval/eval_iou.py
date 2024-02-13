@@ -130,7 +130,11 @@ def main(args):
         elif args.method == 'maxlogit':
             predicted_labels = torch.argmax(outputs, dim=1).unsqueeze(1).data          
         elif args.method == 'maxentropy':
-            predicted_labels = torch.argmax(funct.softmax(outputs, dim=1), dim=1).unsqueeze(1).data
+            anomaly_result = torch.div(
+                torch.sum(-funct.softmax(outputs, dim=0) * funct.log_softmax(outputs, dim=0), dim=0),
+                torch.log(torch.tensor(outputs.size(0))),
+            )
+            anomaly_result = anomaly_result.data.cpu().numpy()
 
         iouEvalVal.addBatch(predicted_labels, labels)
 
