@@ -117,10 +117,12 @@ def main(args):
 
         inputs = Variable(images)
         with torch.no_grad():
-            if modelname == "bisenetv1":
-                 outputs = model(inputs)[0]
-            else:
-                 outputs = model(inputs)
+            outputs = model(inputs)
+            
+        if modelname == 'enet':
+            outputs = torch.roll(outputs, -1, 1)
+        elif modelname == 'bisenetv1':
+            outputs = outputs[0]
 
         if args.method == 'msp':
             softmax_output = funct.softmax(outputs / float(args.temperature), dim=1)
