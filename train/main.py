@@ -28,6 +28,10 @@ from iouEval import iouEval, getColorEntry
 
 from shutil import copyfile
 
+from LogitNorm import LogitNormLoss
+from FocalLoss import FocalLoss
+
+
 NUM_CHANNELS = 3
 NUM_CLASSES = 20 #pascal=22, cityscapes=20
 
@@ -144,7 +148,13 @@ def train(args, model, enc=False):
 
     if args.cuda:
         weight = weight.cuda()
-    criterion = CrossEntropyLoss2d(weight)
+    #criterion = CrossEntropyLoss2d(weight)
+    if args.loss == 'crossentropy':
+        criterion = CrossEntropyLoss2d(weight)
+    if args.loss == 'focal':
+        criterion = FocalLoss()
+    if args.loss == 'logitnorm':
+        criterion = LogitNormLoss()
     print(type(criterion))
 
     savedir = f'../save/{args.savedir}'
@@ -484,6 +494,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--cuda', action='store_true', default=True)  #NOTE: cpu-only has not been tested so you might have to change code if you deactivate this flag
     parser.add_argument('--model', default="erfnet")
+    parser.add_argument('--loss', default="crossentropy")
     parser.add_argument('--state')
 
     parser.add_argument('--port', type=int, default=8097)
