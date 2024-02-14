@@ -458,12 +458,12 @@ def main(args):
                 own_state[name].copy_(param)
             return model
 
-        #print(torch.load(args.state))
+        print("torch.load(args.state)")
         if args.pretrained_net_flag:
             print("pretrained_net_flag")
-            model.load_state_dict(torch.load(args.pretrained_net))
-        else:
             model = load_my_state_dict(model, torch.load(args.state))
+        
+      
 
     """
     def weights_init(m):
@@ -540,7 +540,7 @@ if __name__ == '__main__':
     parser.add_argument('--iouVal', action='store_true', default=True)  
     parser.add_argument('--resume', action='store_true')    #Use this flag to load last checkpoint for training  
 
-    parser.add_argument('--pretrained_net', default='../trained_models/erfnet_pretrained.pth') 
-    parser.add_argument('--pretrained_net_flag', action='store_true', default=False)   
+    parser.add_argument('--pretrained_net', default='/../trained_models/erfnet_pretrained.pth') 
+    parser.add_argument('--pretrained_net_flag', default=True)   
     
     main(parser.parse_args())
