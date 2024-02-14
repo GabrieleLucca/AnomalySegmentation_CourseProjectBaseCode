@@ -1,3 +1,4 @@
+'''imported from hongxin001/logitnorm_ood repository'''
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

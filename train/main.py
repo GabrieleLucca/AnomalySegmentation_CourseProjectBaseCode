@@ -149,14 +149,21 @@ def train(args, model, enc=False):
 
     if args.cuda:
         weight = weight.cuda()
-    #criterion = CrossEntropyLoss2d(weight)
-    if args.loss == 'crossentropy':
-        criterion = CrossEntropyLoss2d(weight)
+        
     if args.loss == 'focal':
         criterion = FocalLoss()
+        print(type(criterion))
     if args.loss == 'logitnorm':
-        criterion = LogitNormLoss()
-    print(type(criterion))
+        criterion = LogitNormLoss(device = 'cuda')
+        print(type(criterion))
+    if args.loss == 'sumloss':
+        criterion1 = LogitNormLoss(device = 'cuda') 
+        criterion2 = FocalLoss() 
+        criterion3 = CrossEntropyLoss2d(weight)
+        print("Sum of Losses")
+    else:
+        criterion = CrossEntropyLoss2d(weight)
+        print(type(criterion))
 
     savedir = f'../save/{args.savedir}'
 
@@ -241,11 +248,17 @@ def train(args, model, enc=False):
             #print("targets", np.unique(targets[:, 0].cpu().data.numpy()))
 
             optimizer.zero_grad()
-            loss = criterion(outputs, targets[:, 0])
+            if args.loss == 'sumloss':
+                loss1 = criterion1(outputs, targets[:, 0]) 
+                loss2 = criterion2(outputs, targets[:, 0])
+                loss3 = criterion3(outputs, targets[:, 0])
+                loss = loss1 + loss2 + loss3
+            else:
+                loss = criterion(outputs, targets[:, 0])
             loss.backward()
             optimizer.step()
 
-            epoch_loss.append(loss.data[0])
+            epoch_loss.append(loss.data.item())
             time_train.append(time.time() - start_time)
 
             if (doIouTrain):
@@ -304,8 +317,15 @@ def train(args, model, enc=False):
             targets = Variable(labels, volatile=True)
             outputs = model(inputs, only_encode=enc) 
 
-            loss = criterion(outputs, targets[:, 0])
-            epoch_loss_val.append(loss.data[0])
+           
+            if args.loss == 'sumloss':
+                loss1 = criterion1(outputs, targets[:, 0]) 
+                loss2 = criterion2(outputs, targets[:, 0])
+                loss3 = criterion3(outputs, targets[:, 0])
+                loss = loss1 + loss2 + loss3
+            else:
+                loss = criterion(outputs, targets[:, 0])
+            epoch_loss_val.append(loss.data.item())
             time_val.append(time.time() - start_time)
 
 
