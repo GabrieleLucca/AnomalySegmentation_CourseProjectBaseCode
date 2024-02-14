@@ -460,9 +460,10 @@ def main(args):
 
         #print(torch.load(args.state))
         if args.pretrained_net_flag:
-             model.load_state_dict(torch.load(args.pretrained_net))
+            print("pretrained_net_flag")
+            model.load_state_dict(torch.load(args.pretrained_net))
         else:
-             model = load_my_state_dict(model, torch.load(args.state))
+            model = load_my_state_dict(model, torch.load(args.state))
 
     """
     def weights_init(m):
