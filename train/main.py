@@ -134,7 +134,7 @@ def train(args, model, enc=False):
         weight[17] = 10.405355453491	
         weight[18] = 10.138095855713	
 
-    weight[19] = 0
+    weight[19] = 1
 
     assert os.path.exists(args.datadir), "Error: datadir (dataset directory) could not be loaded"
 
@@ -143,6 +143,7 @@ def train(args, model, enc=False):
     dataset_train = cityscapes(args.datadir, co_transform, 'train')
     dataset_val = cityscapes(args.datadir, co_transform_val, 'val')
 
+    
     loader = DataLoader(dataset_train, num_workers=args.num_workers, batch_size=args.batch_size, shuffle=True)
     loader_val = DataLoader(dataset_val, num_workers=args.num_workers, batch_size=args.batch_size, shuffle=False)
 
