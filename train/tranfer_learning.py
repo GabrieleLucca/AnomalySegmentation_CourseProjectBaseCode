@@ -28,10 +28,6 @@ from iouEval import iouEval, getColorEntry
 
 from shutil import copyfile
 
-from LogitNorm import LogitNormLoss
-from FocalLoss import FocalLoss
-
-
 NUM_CHANNELS = 3
 NUM_CLASSES = 20 #pascal=22, cityscapes=20
 
@@ -134,7 +130,7 @@ def train(args, model, enc=False):
         weight[17] = 10.405355453491	
         weight[18] = 10.138095855713	
 
-    weight[19] = 1
+    weight[19] = 0
 
     assert os.path.exists(args.datadir), "Error: datadir (dataset directory) could not be loaded"
 
@@ -143,27 +139,13 @@ def train(args, model, enc=False):
     dataset_train = cityscapes(args.datadir, co_transform, 'train')
     dataset_val = cityscapes(args.datadir, co_transform_val, 'val')
 
-    
     loader = DataLoader(dataset_train, num_workers=args.num_workers, batch_size=args.batch_size, shuffle=True)
     loader_val = DataLoader(dataset_val, num_workers=args.num_workers, batch_size=args.batch_size, shuffle=False)
 
     if args.cuda:
         weight = weight.cuda()
-        
-    if args.loss == 'focal':
-        criterion = FocalLoss()
-        print(type(criterion))
-    if args.loss == 'logitnorm':
-        criterion = LogitNormLoss(device = 'cuda')
-        print(type(criterion))
-    if args.loss == 'sumloss':
-        criterion1 = LogitNormLoss(device = 'cuda') 
-        criterion2 = FocalLoss() 
-        criterion3 = CrossEntropyLoss2d(weight)
-        print("Sum of Losses")
-    else:
-        criterion = CrossEntropyLoss2d(weight)
-        print(type(criterion))
+    criterion = CrossEntropyLoss2d(weight)
+    print(type(criterion))
 
     savedir = f'../save/{args.savedir}'
 
@@ -248,17 +230,11 @@ def train(args, model, enc=False):
             #print("targets", np.unique(targets[:, 0].cpu().data.numpy()))
 
             optimizer.zero_grad()
-            if args.loss == 'sumloss':
-                loss1 = criterion1(outputs, targets[:, 0]) 
-                loss2 = criterion2(outputs, targets[:, 0])
-                loss3 = criterion3(outputs, targets[:, 0])
-                loss = loss1 + loss2 + loss3
-            else:
-                loss = criterion(outputs, targets[:, 0])
+            loss = criterion(outputs, targets[:, 0])
             loss.backward()
             optimizer.step()
 
-            epoch_loss.append(loss.data.item())
+            epoch_loss.append(loss.data[0])
             time_train.append(time.time() - start_time)
 
             if (doIouTrain):
@@ -317,15 +293,8 @@ def train(args, model, enc=False):
             targets = Variable(labels, volatile=True)
             outputs = model(inputs, only_encode=enc) 
 
-           
-            if args.loss == 'sumloss':
-                loss1 = criterion1(outputs, targets[:, 0]) 
-                loss2 = criterion2(outputs, targets[:, 0])
-                loss3 = criterion3(outputs, targets[:, 0])
-                loss = loss1 + loss2 + loss3
-            else:
-                loss = criterion(outputs, targets[:, 0])
-            epoch_loss_val.append(loss.data.item())
+            loss = criterion(outputs, targets[:, 0])
+            epoch_loss_val.append(loss.data[0])
             time_val.append(time.time() - start_time)
 
 
@@ -425,7 +394,7 @@ def main(args):
     if not os.path.exists(savedir):
         os.makedirs(savedir)
 
-    with open(savedir + '/opts.txt', "w") as myfile:
+    with open(savedir + '/opts_tranfer_learning.txt', "w") as myfile:
         myfile.write(str(args))
 
     #Load Model
@@ -459,11 +428,10 @@ def main(args):
             return model
 
         #print(torch.load(args.state))
-        if args.pretrained_net:
-             model.load_state_dict(torch.load(args.pretrained_net))
+        if args.pretrained_net_flag:
+             model.load_state_dict(torch.load("pretrained_net.pth"))
         else:
              model = load_my_state_dict(model, torch.load(args.state))
-
     """
     def weights_init(m):
         classname = m.__class__.__name__
@@ -518,7 +486,6 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--cuda', action='store_true', default=True)  #NOTE: cpu-only has not been tested so you might have to change code if you deactivate this flag
     parser.add_argument('--model', default="erfnet")
-    parser.add_argument('--loss', default="crossentropy")
     parser.add_argument('--state')
 
     parser.add_argument('--port', type=int, default=8097)
@@ -537,8 +504,9 @@ if __name__ == '__main__':
 
     parser.add_argument('--iouTrain', action='store_true', default=False) #recommended: False (takes more time to train otherwise)
     parser.add_argument('--iouVal', action='store_true', default=True)  
-    parser.add_argument('--resume', action='store_true')    #Use this flag to load last checkpoint for training  
-
+    parser.add_argument('--resume', action='store_true')    #Use this flag to load last checkpoint for training 
+     
     parser.add_argument('--pretrained_net', default='../trained_models/erfnet_pretrained.pth')  
-    
+    parser.add_argument('--pretrained_net_flag', action='store_true', default=False)   
+
     main(parser.parse_args())
