@@ -31,6 +31,8 @@ from shutil import copyfile
 from LogitNorm import LogitNormLoss
 from FocalLoss import FocalLoss
 
+import torch.nn.utils.prune as prune
+
 
 NUM_CHANNELS = 3
 NUM_CLASSES = 20 #pascal=22, cityscapes=20
@@ -210,6 +212,18 @@ def train(args, model, enc=False):
     if args.visualize and args.steps_plot > 0:
         board = Dashboard(args.port)
 
+   # Define which parameters to prune
+    if (args.prune == True):
+        parameters_to_prune = []
+        for _, module in model.named_modules():
+            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
+                # Here you can define your criteria for pruning
+                parameters_to_prune.append((module, 'weight'))  # Pruning weights
+                # If you also want to prune biases, uncomment the line below
+                # parameters_to_prune.append((module, 'bias'))  # Pruning biases
+
+
+
     for epoch in range(start_epoch, args.num_epochs+1):
         print("----- TRAINING - EPOCH", epoch, "-----")
 
@@ -327,6 +341,12 @@ def train(args, model, enc=False):
                 loss = criterion(outputs, targets[:, 0])
             epoch_loss_val.append(loss.data.item())
             time_val.append(time.time() - start_time)
+
+            # Pruning
+            if (args.prune == True):
+                if step % args.prune_interval == 0:
+                    for module, name in parameters_to_prune:
+                        prune.l1_unstructured(module, name=name, amount=args.prune_amount)
 
 
             #Add batch to calculate TP, FP and FN for iou estimation
@@ -462,6 +482,7 @@ def main(args):
         if args.pretrained_net_flag:
             print("pretrained_net_flag")
             model = load_my_state_dict(model, torch.load(args.state))
+
         
       
 
@@ -542,5 +563,9 @@ if __name__ == '__main__':
 
     parser.add_argument('--pretrained_net', default='/../trained_models/erfnet_pretrained.pth') 
     parser.add_argument('--pretrained_net_flag', default=True)   
+
+    parser.add_argument('--prune', default=False)
+    parser.add_argument('--prune_interval', type=int, default=10)
+    parser.add_argument('--prune_amount', type=float, default=0.1)
     
     main(parser.parse_args())
