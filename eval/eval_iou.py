@@ -48,7 +48,7 @@ def main(args):
     if modelname == "erfnet":
         model = ERFNet(NUM_CLASSES)
         args.loadModel = "erfnet.py"
-        args.loadWeights = "model_best.pth"
+        args.loadWeights = "erfnet_logit.pth"
     elif modelname == "enet":
         model = ENet(NUM_CLASSES)
         args.loadModel = "ENet.py"
@@ -92,13 +92,13 @@ def main(args):
         if key.split('.')[0] not in ['conv_out16', 'conv_out32']:
           new_dict['module.'+key] = value
       model.load_state_dict(new_dict)
-      input_transform_cityscapes = Compose(
-         [
-        Resize(512, Image.BILINEAR),
-        ToTensor(),
-        Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),
-        ]
-        )   
+    #   input_transform_cityscapes = Compose(
+    #      [
+    #     Resize(512, Image.BILINEAR),
+    #     ToTensor(),
+    #     Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),
+    #     ]
+    #     )   
     else:
         model = load_my_state_dict(model, torch.load(weightspath, map_location=lambda storage, loc: storage))
 
