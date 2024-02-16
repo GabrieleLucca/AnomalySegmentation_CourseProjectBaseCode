@@ -9,6 +9,7 @@ import time
 import numpy as np
 import torch
 import math
+import torch.nn as nn
 
 from PIL import Image, ImageOps
 from argparse import ArgumentParser
@@ -221,8 +222,10 @@ def train(args, model, enc=False):
                 parameters_to_prune.append((module, 'weight'))  # Pruning weights
                 # If you also want to prune biases, uncomment the line below
                 # parameters_to_prune.append((module, 'bias'))  # Pruning biases
-
-
+        print("parameters: ")
+        print("")
+        print(parameters_to_prune)
+        print("")
 
     for epoch in range(start_epoch, args.num_epochs+1):
         print("----- TRAINING - EPOCH", epoch, "-----")
@@ -564,7 +567,7 @@ if __name__ == '__main__':
     parser.add_argument('--pretrained_net', default='/../trained_models/erfnet_pretrained.pth') 
     parser.add_argument('--pretrained_net_flag', default=True)   
 
-    parser.add_argument('--prune', default=False)
+    parser.add_argument('--prune', default=True)
     parser.add_argument('--prune_interval', type=int, default=10)
     parser.add_argument('--prune_amount', type=float, default=0.1)
     
