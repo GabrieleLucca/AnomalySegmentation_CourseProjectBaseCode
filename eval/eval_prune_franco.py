@@ -70,7 +70,7 @@ def main():
     weightspath = args.loadDir + "erfnet_pretrained.pth"
 
     modelpath_prune = args.loadDir + args.loadModel 
-    weightspath_prune  = args.loadDir + "erfnet_pruning_scarso.pth"
+    weightspath_prune  = args.loadDir + "erfnet_PRUNOOOO.pth"
 
     print ("Loading model: " + modelpath)
     print ("Loading weights: " + weightspath)
@@ -127,7 +127,6 @@ def main():
 
     # Calcolo dei parametri per il modello non prune
     summary(model, input_size=(3, 512, 256))
-
 
 
 
