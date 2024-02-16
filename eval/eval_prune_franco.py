@@ -156,7 +156,28 @@ def main():
     # Calcolo dei parametri per il modello prune
     summary(model_pruned, input_size=(3, 512, 256))
 
+    # Stampa dei nomi dei moduli
+    print("Nomi dei moduli del modello non pruned:")
+    for name, module in model.named_modules():
+        print(name)
 
+    print("\nNomi dei moduli del modello pruned:")
+    for name, module in model_pruned.named_modules():
+        print(name)
+
+    # Conteggio dei parametri
+    num_params_model = sum(p.numel() for p in model.parameters())
+    num_params_model_pruned = sum(p.numel() for p in model_pruned.parameters())
+    print("\nNumero di parametri del modello non pruned:", num_params_model)
+    print("Numero di parametri del modello pruned:", num_params_model_pruned)
+
+    # Confronto dei pesi
+    for param1, param2 in zip(model.parameters(), model_pruned.parameters()):
+        if not torch.equal(param1, param2):
+            print("I pesi dei due modelli sono diversi.")
+            break
+    else:
+        print("I pesi dei due modelli sono uguali.")
     
 
     #quantized_model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)

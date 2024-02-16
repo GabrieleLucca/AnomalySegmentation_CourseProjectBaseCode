@@ -350,6 +350,7 @@ def train(args, model, enc=False):
                 if step % args.prune_interval == 0:
                     for module, name in parameters_to_prune:
                         prune.l1_unstructured(module, name=name, amount=args.prune_amount)
+                        print("FLAGGGGGGGGGGGGGGGGGGGGGG")
 
 
             #Add batch to calculate TP, FP and FN for iou estimation
