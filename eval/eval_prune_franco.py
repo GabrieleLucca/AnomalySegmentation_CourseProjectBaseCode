@@ -61,7 +61,7 @@ def main():
     
     
     modelname = 'erfenet'
-    
+    model=ERFNet(NUM_CLASSES)
     if not os.path.exists('results.txt'):
         open('results.txt', 'w').close()
     file = open('results.txt', 'a')
@@ -70,7 +70,7 @@ def main():
     weightspath = args.loadDir + "erfnet_pretrained.pth"
 
     modelpath_prune = args.loadDir + args.loadModel 
-    weightspath_prune  = args.loadDir + "erfnet_pretrained_pruned.pth"
+    weightspath_prune  = args.loadDir + "erfnet_pruning_scarso.pth"
 
     print ("Loading model: " + modelpath)
     print ("Loading weights: " + weightspath)
@@ -104,16 +104,54 @@ def main():
 
 
 
-    # Calcolo dei FLOPS per il modello non prune
-    flops_no_prune, _ = profile(model, input_size=(6, 3, 512, 256))
-    print("FLOPS per il modello senza pruning:", flops_no_prune)
+    # Specifica la dimensione dell'input (batch_size, channels, height, width)
+    input_size = (6, 3, 512, 256)
+
+    # Sposta il modello sulla GPU se disponibile
+    if torch.cuda.is_available():
+        model = model.cuda()
+
+    # Passa un input di esempio attraverso il modello
+    input_data = torch.randn(input_size)
+    if torch.cuda.is_available():
+        input_data = input_data.cuda()
+    output = model(input_data)
+
+    # Conta il numero di operazioni floating point effettuate
+    total_ops = 0
+    for name, param in model.named_parameters():
+        total_ops += torch.prod(torch.tensor(param.shape))
+    total_ops *= 2  # Moltiplica per 2 perché tipicamente ogni operazione richiede 2 operazioni floating point (moltiplicazione e somma)
+
+    print(f"FLOPS: {total_ops}")
 
     # Calcolo dei parametri per il modello non prune
     summary(model, input_size=(3, 512, 256))
 
+
+
+
     # Calcolo dei FLOPS per il modello prune
-    flops_prune, _ = profile(model_pruned, input_size=(6, 3, 512, 256))
-    print("FLOPS per il modello con pruning:", flops_prune)
+
+    # Specifica la dimensione dell'input (batch_size, channels, height, width)
+    
+    # Sposta il modello sulla GPU se disponibile
+    if torch.cuda.is_available():
+        model_pruned = model_pruned.cuda()
+
+    # Passa un input di esempio attraverso il modello
+    input_data = torch.randn(input_size)
+    if torch.cuda.is_available():
+        input_data = input_data.cuda()
+    output = model_pruned(input_data)
+
+    # Conta il numero di operazioni floating point effettuate
+    total_ops = 0
+    for name, param in model_pruned.named_parameters():
+        total_ops += torch.prod(torch.tensor(param.shape))
+    total_ops *= 2  # Moltiplica per 2 perché tipicamente ogni operazione richiede 2 operazioni floating point (moltiplicazione e somma)
+
+    print(f"FLOPS: {total_ops}")
 
     # Calcolo dei parametri per il modello prune
     summary(model_pruned, input_size=(3, 512, 256))
