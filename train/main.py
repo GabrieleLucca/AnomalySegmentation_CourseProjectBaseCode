@@ -345,13 +345,6 @@ def train(args, model, enc=False):
             epoch_loss_val.append(loss.data.item())
             time_val.append(time.time() - start_time)
 
-            # Pruning
-            if (args.prune == True):
-                if step % args.prune_interval == 0:
-                    for module, name in parameters_to_prune:
-                        prune.l1_unstructured(module, name=name, amount=args.prune_amount)
-                        print("FLAGGGGGGGGGGGGGGGGGGGGGG")
-
 
             #Add batch to calculate TP, FP and FN for iou estimation
             if (doIouVal):
@@ -375,9 +368,15 @@ def train(args, model, enc=False):
             if args.steps_loss > 0 and step % args.steps_loss == 0:
                 average = sum(epoch_loss_val) / len(epoch_loss_val)
                 print(f'VAL loss: {average:0.4} (epoch: {epoch}, step: {step})', 
-                        "// Avg time/img: %.4f s" % (sum(time_val) / len(time_val) / args.batch_size))
-                       
-
+                        "// Avg time/img: %.4f s" % (sum(time_val) / len(time_val) / args.batch_size))   
+                
+                # Pruning
+        if (args.prune):
+            if step % args.prune_interval == 0:
+                for module, name in parameters_to_prune:
+                    prune.l1_unstructured(module, name=name, amount=args.prune_amount)
+                    print("FLAGGGGGGGGGGGGGGGGGGGGGG")
+                    
         average_epoch_loss_val = sum(epoch_loss_val) / len(epoch_loss_val)
         #scheduler.step(average_epoch_loss_val, epoch)  ## scheduler 1   # update lr if needed
 
