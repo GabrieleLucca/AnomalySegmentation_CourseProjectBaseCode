@@ -21,6 +21,7 @@ from thop import profile
 from torchsummary import summary
 import torch.quantization
 
+
 seed = 42
 
 
@@ -63,6 +64,7 @@ def main():
     
     modelname = 'erfenet'
     model=ERFNet(NUM_CLASSES)
+    model_pruned=ERFNet(NUM_CLASSES)
     if not os.path.exists('results.txt'):
         open('results.txt', 'w').close()
     file = open('results.txt', 'a')
@@ -71,7 +73,7 @@ def main():
     weightspath = args.loadDir + "erfnet_pretrained.pth"
 
     modelpath_prune = args.loadDir + args.loadModel 
-    weightspath_prune  = args.loadDir + "erfnet_pruning_speriamo.pth"
+    weightspath_prune  = args.loadDir + "erfnet_pruning.pth"
 
     print ("Loading model: " + modelpath)
     print ("Loading weights: " + weightspath)
@@ -95,28 +97,29 @@ def main():
                 own_state[name].copy_(param)
         return model
 
-    
-    model = load_my_state_dict(model, torch.load(weightspath, map_location=lambda storage, loc: storage))
-    #model_pruned = load_my_state_dict(model, torch.load(weightspath_prune, map_location=lambda storage, loc: storage))
-    model_pruned = torch.load(weightspath_prune)
+    model_pruned = load_my_state_dict(model, torch.load(weightspath_prune, map_location=lambda storage, loc: storage))
+
     print('Model and weights LOADED successfully')
+ 
+    input_size = (6, 3, 512, 256) 
+ 
+    if torch.cuda.is_available(): 
+        model_pruned = model_pruned.cuda() 
 
-    summary(model, input_size=(3, 512, 256))
-    summary(model_pruned, input_size=(3, 512, 256))
+    input_data = torch.randn(input_size) 
+    if torch.cuda.is_available(): 
+        input_data = input_data.cuda() 
+    output = model_pruned(input_data) 
 
-     # Conteggio dei parametri
-    num_params_model = sum(p.numel() for p in model.parameters())
-    num_params_model_pruned = sum(p.numel() for p in model_pruned.parameters())
-    print("\nNumero di parametri del modello non pruned:", num_params_model)
-    print("Numero di parametri del modello pruned:", num_params_model_pruned)
-
-    # Confronto dei pesi
-    for param1, param2 in zip(model.parameters(), model_pruned.parameters()):
-        if not torch.equal(param1, param2):
-            print("I pesi dei due modelli sono diversi.")
-            break
-    else:
-        print("I pesi dei due modelli sono uguali.")
+    total_ops = 0 
+    for name, param in model_pruned.named_parameters(): 
+        total_ops += torch.prod(torch.tensor(param.shape)) 
+    total_ops *= 2  # Moltiplica per 2 perché tipicamente ogni operazione richiede 2 operazioni floating point (moltiplicazione e somma) 
+ 
+    print(f"FLOPS: {total_ops}") 
+ 
+    summary(model_pruned, input_size=(3, 512, 256)) 
+ 
 
 
 
@@ -156,14 +159,6 @@ def main():
 #metodo 3 
     quantized_model = torch.quantization.quantize_dynamic(model_pruned, {torch.nn.Conv2d, torch.nn.ConvTranspose2d, torch.nn.BatchNorm2d}, dtype=torch.qint8)
     #summary(quantized_model, input_size=(3, 512, 256))
-    for name, param in model.named_parameters():
-          print(f"{name}: {param.dtype}")
-
-    print("---------------------------------------------------")
-
-    #  # Stampare i tipi di dati dei parametri dopo la quantizzazione
-    for name, param in quantized_model.named_parameters():
-          print(f"{name}: {param.dtype}")
 
 #metodo 4 quantizzazione statica
     #quantized_model = torch.quantization.QuantStub()(model)
@@ -183,102 +178,5 @@ def main():
     #  # Esegui la summary della rete
     # summary(quantized_model, input_size=(3, 512))
    
-
-#     model.eval()
-    
-#     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
-#         print(path)
-#         images = torch.from_numpy(np.array(Image.open(path).convert('RGB'))).unsqueeze(0).float()
-#         images = images.permute(0, 3, 1, 2)
-
-#         images = images.cuda()
-
-#         if modelname == "bisenetv1":
-#           result = model(images)[0].squeeze(0)
-#         else:
-#           result = model(images).squeeze(0)
-
-
-#         if args.method == 'msp':
-#             softmax_probs = torch.nn.functional.softmax(result.squeeze(0) / float(args.temperature), dim=0)
-#             anomaly_result = 1.0 - (np.max(softmax_probs.data.cpu().numpy(), axis=0))  
-#         elif args.method == 'maxlogit':
-#             anomaly_result = -torch.max(result, dim=0)[0]
-#             anomaly_result = anomaly_result.data.cpu().numpy()
-#         elif args.method == 'maxentropy':
-#             anomaly_result = torch.div(
-#                 torch.sum(-funct.softmax(result, dim=0) * funct.log_softmax(result, dim=0), dim=0),
-#                 torch.log(torch.tensor(result.size(0))),
-#             )
-#             anomaly_result = anomaly_result.data.cpu().numpy()
-#         elif args.method == 'void':
-#             anomaly_result = funct.softmax(result, dim=0)[-1].data.cpu().numpy()
-#         else:
-#             print("Unknown method")
-
-#         pathGT = path.replace("images", "labels_masks")                
-#         if "RoadObsticle21" in pathGT:
-#            pathGT = pathGT.replace("webp", "png")
-#         if "fs_static" in pathGT:
-#            pathGT = pathGT.replace("jpg", "png")                
-#         if "RoadAnomaly" in pathGT:
-#            pathGT = pathGT.replace("jpg", "png")  
-
-#         mask = Image.open(pathGT)
-#         ood_gts = np.array(mask)
-
-#         if "RoadAnomaly" in pathGT:
-#             ood_gts = np.where((ood_gts==2), 1, ood_gts)
-#         if "LostAndFound" in pathGT:
-#             ood_gts = np.where((ood_gts==0), 255, ood_gts)
-#             ood_gts = np.where((ood_gts==1), 0, ood_gts)
-#             ood_gts = np.where((ood_gts>1)&(ood_gts<201), 1, ood_gts)
-
-#         if "Streethazard" in pathGT:
-#             ood_gts = np.where((ood_gts==14), 255, ood_gts)
-#             ood_gts = np.where((ood_gts<20), 0, ood_gts)
-#             ood_gts = np.where((ood_gts==255), 1, ood_gts)
-
-#         if 1 not in np.unique(ood_gts):
-#             continue              
-#         else:
-#              ood_gts_list.append(ood_gts)
-#              anomaly_score_list.append(anomaly_result)
-#         del result, anomaly_result, ood_gts, mask
-#         torch.cuda.empty_cache()
-
-#     file.write( "\n")
-
-#     ood_gts = np.array(ood_gts_list)
-#     anomaly_scores = np.array(anomaly_score_list)
-
-#     ood_mask = (ood_gts == 1)
-#     ind_mask = (ood_gts == 0)
-
-#     ood_out = anomaly_scores[ood_mask]
-#     ind_out = anomaly_scores[ind_mask]
-
-#     ood_label = np.ones(len(ood_out))
-#     ind_label = np.zeros(len(ind_out))
-    
-#     val_out = np.concatenate((ind_out, ood_out))
-#     val_label = np.concatenate((ind_label, ood_label))
-
-#    # print("Val out and val label ",val_out.shape, val_label.shape)
-
-#     prc_auc = average_precision_score(val_label, val_out)
-#     fpr = fpr_at_95_tpr(val_out, val_label)
-
-#     print(f'Model: {modelname.upper()}')
-#     print(f'Method: {args.method}')
-#     if args.method == 'msp':
-#         print(f'Temperature: {args.temperature}')
-#     print(f'AUPRC score: {prc_auc*100.0}')
-#     print(f'FPR@TPR95: {fpr*100.0}')
-
-#     file.write(
-#         f'Model: {modelname.upper()}    Method: {args.method}   {f"   Temperature: {args.temperature}" if args.method == "msp" else ""}    AUPRC score: {prc_auc * 100.0}   FPR@TPR95: {fpr * 100.0}'
-#     )
-#     file.close()
 if __name__ == '__main__':
     main()

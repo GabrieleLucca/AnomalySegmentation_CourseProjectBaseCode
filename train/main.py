@@ -222,10 +222,6 @@ def train(args, model, enc=False):
                 parameters_to_prune.append((module, 'weight'))  # Pruning weights
                 # If you also want to prune biases, uncomment the line below
                 # parameters_to_prune.append((module, 'bias'))  # Pruning biases
-        print("parameters: ")
-        print("")
-        print(parameters_to_prune)
-        print("")
 
     for epoch in range(start_epoch, args.num_epochs+1):
         print("----- TRAINING - EPOCH", epoch, "-----")
@@ -373,7 +369,6 @@ def train(args, model, enc=False):
                 # Pruning
         if (args.prune):
             if epoch % args.prune_interval == 0:
-                print("stampa 2")
                 print(parameters_to_prune)
                 for module, name in parameters_to_prune:
                     prune.l1_unstructured(module, name=name, amount=args.prune_amount)
@@ -495,9 +490,6 @@ def main(args):
             print("pretrained_net_flag")
             model = load_my_state_dict(model, torch.load(args.state))
 
-        
-      
-
     """
     def weights_init(m):
         classname = m.__class__.__name__
@@ -576,7 +568,7 @@ if __name__ == '__main__':
     parser.add_argument('--pretrained_net', default='/../trained_models/erfnet_pretrained.pth') 
     parser.add_argument('--pretrained_net_flag', default=True)   
 
-    parser.add_argument('--prune', default=True)
+    parser.add_argument('--prune', default=False)
     parser.add_argument('--prune_interval', type=int, default=10)
     parser.add_argument('--prune_amount', type=float, default=0.1)
     
