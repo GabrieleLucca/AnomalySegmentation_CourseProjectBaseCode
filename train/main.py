@@ -371,14 +371,12 @@ def train(args, model, enc=False):
                         "// Avg time/img: %.4f s" % (sum(time_val) / len(time_val) / args.batch_size))   
                 
                 # Pruning
-        print("stampa 1")
         if (args.prune):
             if epoch % args.prune_interval == 0:
                 print("stampa 2")
                 print(parameters_to_prune)
                 for module, name in parameters_to_prune:
                     prune.l1_unstructured(module, name=name, amount=args.prune_amount)
-                    print("stampa 3")
                     
         average_epoch_loss_val = sum(epoch_loss_val) / len(epoch_loss_val)
         #scheduler.step(average_epoch_loss_val, epoch)  ## scheduler 1   # update lr if needed
@@ -419,17 +417,25 @@ def train(args, model, enc=False):
             filename = f'{savedir}/model-{epoch:03}.pth'
             filenamebest = f'{savedir}/model_best.pth'
         if args.epochs_save > 0 and step > 0 and step % args.epochs_save == 0:
-            torch.save(model.state_dict(), filename)
-            print(f'save: {filename} (epoch: {epoch})')
+           if args.prune == True:
+                torch.save(model, filename)
+           else: 
+                torch.save(model.state_dict(), filename)
+
+        print(f'save: {filename} (epoch: {epoch})')
         if (is_best):
-            torch.save(model.state_dict(), filenamebest)
-            print(f'save: {filenamebest} (epoch: {epoch})')
-            if (not enc):
-                with open(savedir + "/best.txt", "w") as myfile:
-                    myfile.write("Best epoch is %d, with Val-IoU= %.4f" % (epoch, iouVal))   
-            else:
-                with open(savedir + "/best_encoder.txt", "w") as myfile:
-                    myfile.write("Best epoch is %d, with Val-IoU= %.4f" % (epoch, iouVal))           
+           if args.prune == True:
+                torch.save(model, filenamebest)
+           else: 
+                torch.save(model.state_dict(), filenamebest)
+
+        print(f'save: {filenamebest} (epoch: {epoch})')
+        if (not enc):
+            with open(savedir + "/best.txt", "w") as myfile:
+                myfile.write("Best epoch is %d, with Val-IoU= %.4f" % (epoch, iouVal))   
+        else:
+            with open(savedir + "/best_encoder.txt", "w") as myfile:
+                myfile.write("Best epoch is %d, with Val-IoU= %.4f" % (epoch, iouVal))           
 
         #SAVE TO FILE A ROW WITH THE EPOCH RESULT (train loss, val loss, train IoU, val IoU)
         #Epoch		Train-loss		Test-loss	Train-IoU	Test-IoU		learningRate

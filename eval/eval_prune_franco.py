@@ -19,6 +19,7 @@ from iouEval import iouEval
 from temperature_scaling import ModelWithTemperature
 from thop import profile
 from torchsummary import summary
+import torch.quantization
 
 seed = 42
 
@@ -70,7 +71,7 @@ def main():
     weightspath = args.loadDir + "erfnet_pretrained.pth"
 
     modelpath_prune = args.loadDir + args.loadModel 
-    weightspath_prune  = args.loadDir + "erfnet_PRUNOOOO.pth"
+    weightspath_prune  = args.loadDir + "erfnet_pruning_speriamo.pth"
 
     print ("Loading model: " + modelpath)
     print ("Loading weights: " + weightspath)
@@ -96,73 +97,14 @@ def main():
 
     
     model = load_my_state_dict(model, torch.load(weightspath, map_location=lambda storage, loc: storage))
-    model_pruned = load_my_state_dict(model, torch.load(weightspath_prune, map_location=lambda storage, loc: storage))
-
+    #model_pruned = load_my_state_dict(model, torch.load(weightspath_prune, map_location=lambda storage, loc: storage))
+    model_pruned = torch.load(weightspath_prune)
     print('Model and weights LOADED successfully')
-    
 
-
-
-
-    # Specifica la dimensione dell'input (batch_size, channels, height, width)
-    input_size = (6, 3, 512, 256)
-
-    # Sposta il modello sulla GPU se disponibile
-    if torch.cuda.is_available():
-        model = model.cuda()
-
-    # Passa un input di esempio attraverso il modello
-    input_data = torch.randn(input_size)
-    if torch.cuda.is_available():
-        input_data = input_data.cuda()
-    output = model(input_data)
-
-    # Conta il numero di operazioni floating point effettuate
-    total_ops = 0
-    for name, param in model.named_parameters():
-        total_ops += torch.prod(torch.tensor(param.shape))
-    total_ops *= 2  # Moltiplica per 2 perché tipicamente ogni operazione richiede 2 operazioni floating point (moltiplicazione e somma)
-
-    print(f"FLOPS: {total_ops}")
-
-    # Calcolo dei parametri per il modello non prune
     summary(model, input_size=(3, 512, 256))
-
-    # Calcolo dei FLOPS per il modello prune
-
-    # Specifica la dimensione dell'input (batch_size, channels, height, width)
-    
-    # Sposta il modello sulla GPU se disponibile
-    if torch.cuda.is_available():
-        model_pruned = model_pruned.cuda()
-
-    # Passa un input di esempio attraverso il modello
-    input_data = torch.randn(input_size)
-    if torch.cuda.is_available():
-        input_data = input_data.cuda()
-    output = model_pruned(input_data)
-
-    # Conta il numero di operazioni floating point effettuate
-    total_ops = 0
-    for name, param in model_pruned.named_parameters():
-        total_ops += torch.prod(torch.tensor(param.shape))
-    total_ops *= 2  # Moltiplica per 2 perché tipicamente ogni operazione richiede 2 operazioni floating point (moltiplicazione e somma)
-
-    print(f"FLOPS: {total_ops}")
-
-    # Calcolo dei parametri per il modello prune
     summary(model_pruned, input_size=(3, 512, 256))
 
-    # Stampa dei nomi dei moduli
-    print("Nomi dei moduli del modello non pruned:")
-    for name, module in model.named_modules():
-        print(name)
-
-    print("\nNomi dei moduli del modello pruned:")
-    for name, module in model_pruned.named_modules():
-        print(name)
-
-    # Conteggio dei parametri
+     # Conteggio dei parametri
     num_params_model = sum(p.numel() for p in model.parameters())
     num_params_model_pruned = sum(p.numel() for p in model_pruned.parameters())
     print("\nNumero di parametri del modello non pruned:", num_params_model)
@@ -175,26 +117,70 @@ def main():
             break
     else:
         print("I pesi dei due modelli sono uguali.")
+
+
+
+#metodo 1
+    #model.eval()
+
+    # Definisci il tipo di dati di output desiderato
+    #dtype = torch.qint8
+
+    # Applica la quantizzazione post-addestramento al modello
+    #quantized_model = torch.quantization.quantize(model, {'': dtype})
+
+   # summary(quantized_model, input_size=(3, 512, 256))
+
+#metodo 2 (non vanno perche i layer conv non possono essere quantizzati in modo dinamico)
+    # model_int8 = torch.ao.quantization.quantize_dynamic(
+    # model,  # the original model
+    # {torch.nn.Conv2d, torch.nn.ConvTranspose2d, torch.nn.BatchNorm2d},  # a set of layers to dynamically quantize
+    # dtype=torch.qint8)  # the target dtype for quantized weights
     
-
-    #modules_to_quantize = {nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d}
-        
-    #quantized_model = torch.quantization.quantize_dynamic(model, modules_to_quantize, dtype=torch.qint8)
-
-    #quantized_model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
-        
-    # # Stampare i tipi di dati dei parametri prima della quantizzazione
     # for name, param in model.named_parameters():
-    #     print(f"{name}: {param.dtype}")
+    #       print(f"{name}: {param.dtype}")
 
-    # # Utilizza la quantizzazione dinamica solo per i moduli lineari
-    # quantized_model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+    # print("---------------------------------------------------")
 
-    # # Stampare i tipi di dati dei parametri dopo la quantizzazione
-    # for name, param in quantized_model.named_parameters():
-    #     print(f"{name}: {param.dtype}")
+    # #  # Stampare i tipi di dati dei parametri dopo la quantizzazione
+    # for name, param in model_int8.named_parameters():
+    #       print(f"{name}: {param.dtype}")
+    # summary(model_int8, input_size=(3, 512, 256))
+    
+    #modules_to_quantize = {torch.nn.Conv2d, torch.nn.ConvTranspose2d, torch.nn.BatchNorm2d}
+        
+    #quantized_model = torch.quantization.quantize_dynamic(model_pruned, modules_to_quantize, dtype=torch.qint8)
 
-    # # Esegui la summary della rete
+    #summary(quantized_model, input_size=(3, 512, 256))
+        
+#metodo 3 
+    quantized_model = torch.quantization.quantize_dynamic(model_pruned, {torch.nn.Conv2d, torch.nn.ConvTranspose2d, torch.nn.BatchNorm2d}, dtype=torch.qint8)
+    #summary(quantized_model, input_size=(3, 512, 256))
+    for name, param in model.named_parameters():
+          print(f"{name}: {param.dtype}")
+
+    print("---------------------------------------------------")
+
+    #  # Stampare i tipi di dati dei parametri dopo la quantizzazione
+    for name, param in quantized_model.named_parameters():
+          print(f"{name}: {param.dtype}")
+
+#metodo 4 quantizzazione statica
+    #quantized_model = torch.quantization.QuantStub()(model)
+    #quantized_model.load_state_dict(model.state_dict())
+    #quantized_model = torch.quantization.convert(quantized_model)
+
+    #  # Stampare i tipi di dati dei parametri prima della quantizzazione
+    #for name, param in model.named_parameters():
+    #      print(f"{name}: {param.dtype}")
+
+   # print("---------------------------------------------------")
+
+    #  # Stampare i tipi di dati dei parametri dopo la quantizzazione
+   # for name, param in quantized_model.named_parameters():
+     #     print(f"{name}: {param.dtype}")
+
+    #  # Esegui la summary della rete
     # summary(quantized_model, input_size=(3, 512))
    
 
