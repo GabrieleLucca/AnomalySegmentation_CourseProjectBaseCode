@@ -128,8 +128,6 @@ def main():
     # Calcolo dei parametri per il modello non prune
     summary(model, input_size=(3, 512, 256))
 
-
-
     # Calcolo dei FLOPS per il modello prune
 
     # Specifica la dimensione dell'input (batch_size, channels, height, width)
@@ -179,7 +177,25 @@ def main():
         print("I pesi dei due modelli sono uguali.")
     
 
+    #modules_to_quantize = {nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d}
+        
+    #quantized_model = torch.quantization.quantize_dynamic(model, modules_to_quantize, dtype=torch.qint8)
+
     #quantized_model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+        
+    # # Stampare i tipi di dati dei parametri prima della quantizzazione
+    # for name, param in model.named_parameters():
+    #     print(f"{name}: {param.dtype}")
+
+    # # Utilizza la quantizzazione dinamica solo per i moduli lineari
+    # quantized_model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+
+    # # Stampare i tipi di dati dei parametri dopo la quantizzazione
+    # for name, param in quantized_model.named_parameters():
+    #     print(f"{name}: {param.dtype}")
+
+    # # Esegui la summary della rete
+    # summary(quantized_model, input_size=(3, 512))
    
 
 #     model.eval()

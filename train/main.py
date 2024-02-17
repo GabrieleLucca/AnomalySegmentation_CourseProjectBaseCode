@@ -371,11 +371,14 @@ def train(args, model, enc=False):
                         "// Avg time/img: %.4f s" % (sum(time_val) / len(time_val) / args.batch_size))   
                 
                 # Pruning
+        print("stampa 1")
         if (args.prune):
-            if step % args.prune_interval == 0:
+            if epoch % args.prune_interval == 0:
+                print("stampa 2")
+                print(parameters_to_prune)
                 for module, name in parameters_to_prune:
                     prune.l1_unstructured(module, name=name, amount=args.prune_amount)
-                    print("FLAGGGGGGGGGGGGGGGGGGGGGG")
+                    print("stampa 3")
                     
         average_epoch_loss_val = sum(epoch_loss_val) / len(epoch_loss_val)
         #scheduler.step(average_epoch_loss_val, epoch)  ## scheduler 1   # update lr if needed
