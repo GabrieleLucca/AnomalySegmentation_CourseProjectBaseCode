@@ -114,29 +114,25 @@ def main():
     total_ops = 0 
     for name, param in model_pruned.named_parameters(): 
         total_ops += torch.prod(torch.tensor(param.shape)) 
-    total_ops *= 2  # Moltiplica per 2 perché tipicamente ogni operazione richiede 2 operazioni floating point (moltiplicazione e somma) 
+    total_ops *= 2  
  
     print(f"FLOPS: {total_ops}") 
  
     summary(model_pruned, input_size=(3, 512, 256)) 
- 
 
 
-
-#metodo 1
+#method 1
     #model.eval()
 
-    # Definisci il tipo di dati di output desiderato
     #dtype = torch.qint8
 
-    # Applica la quantizzazione post-addestramento al modello
     #quantized_model = torch.quantization.quantize(model, {'': dtype})
 
    # summary(quantized_model, input_size=(3, 512, 256))
 
-#metodo 2 (non vanno perche i layer conv non possono essere quantizzati in modo dinamico)
+#method 2 
     # model_int8 = torch.ao.quantization.quantize_dynamic(
-    # model,  # the original model
+    # model,  
     # {torch.nn.Conv2d, torch.nn.ConvTranspose2d, torch.nn.BatchNorm2d},  # a set of layers to dynamically quantize
     # dtype=torch.qint8)  # the target dtype for quantized weights
     
@@ -145,7 +141,6 @@ def main():
 
     # print("---------------------------------------------------")
 
-    # #  # Stampare i tipi di dati dei parametri dopo la quantizzazione
     # for name, param in model_int8.named_parameters():
     #       print(f"{name}: {param.dtype}")
     # summary(model_int8, input_size=(3, 512, 256))
@@ -156,26 +151,23 @@ def main():
 
     #summary(quantized_model, input_size=(3, 512, 256))
         
-#metodo 3 
+#method 3 
     quantized_model = torch.quantization.quantize_dynamic(model_pruned, {torch.nn.Conv2d, torch.nn.ConvTranspose2d, torch.nn.BatchNorm2d}, dtype=torch.qint8)
     #summary(quantized_model, input_size=(3, 512, 256))
 
-#metodo 4 quantizzazione statica
+#method 4 static quantization
     #quantized_model = torch.quantization.QuantStub()(model)
     #quantized_model.load_state_dict(model.state_dict())
     #quantized_model = torch.quantization.convert(quantized_model)
 
-    #  # Stampare i tipi di dati dei parametri prima della quantizzazione
     #for name, param in model.named_parameters():
     #      print(f"{name}: {param.dtype}")
 
    # print("---------------------------------------------------")
-
-    #  # Stampare i tipi di dati dei parametri dopo la quantizzazione
+    
    # for name, param in quantized_model.named_parameters():
      #     print(f"{name}: {param.dtype}")
 
-    #  # Esegui la summary della rete
     # summary(quantized_model, input_size=(3, 512))
    
 if __name__ == '__main__':
