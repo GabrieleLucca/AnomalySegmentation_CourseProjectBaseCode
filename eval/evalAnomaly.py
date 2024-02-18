@@ -42,7 +42,7 @@ def main():
         "or a single glob pattern such as 'directory/*.jpg'",
     )  
     parser.add_argument('--loadDir',default="../trained_models/")
-    parser.add_argument('--loadWeights', default="erfnet_pretrained.pth")
+    parser.add_argument('--loadWeights', default="erfnet_trained_focal.pth")
     parser.add_argument('--loadModel', default="erfnet.py")
     parser.add_argument('--subset', default="val")  #can be val or train (must have labels)
     parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")

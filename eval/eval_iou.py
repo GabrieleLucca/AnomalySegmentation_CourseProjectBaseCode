@@ -48,7 +48,7 @@ def main(args):
     if modelname == "erfnet":
         model = ERFNet(NUM_CLASSES)
         args.loadModel = "erfnet.py"
-        args.loadWeights = "erfnet_logit.pth"
+        args.loadWeights = "erfnet_trained_sumloss.pth"
     elif modelname == "enet":
         model = ENet(NUM_CLASSES)
         args.loadModel = "ENet.py"
